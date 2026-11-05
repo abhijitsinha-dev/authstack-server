@@ -32,7 +32,7 @@ const prodFormat = combine(timestamp(), errors({ stack: true }), splat(), json()
 // Logger instance
 // ─────────────────────────────────────────────
 export const logger = winston.createLogger({
-  level: isProduction ? 'info' : 'debug',
+  level: isProduction ? 'http' : 'debug',
   format: isProduction ? prodFormat : devFormat,
   defaultMeta: {
     service: 'authstack',

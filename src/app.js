@@ -7,8 +7,10 @@ import morgan from 'morgan';
 import { httpStream } from './config/logger.js';
 import rootRoute from './routes/root.route.js';
 import healthRoute from './routes/health.route.js';
-import { notFound, errorHandler } from './middlewares/error.middleware.js';
+import notFoundRoute from './routes/notFound.route.js';
+import { errorHandler } from './middlewares/error.middleware.js';
 
+const isProduction = process.env.NODE_ENV === 'production';
 const app = express();
 
 // Needed on Vercel for correct client IP + secure cookies behind the proxy
@@ -29,14 +31,13 @@ app.use(cookieParser());
 
 // ─────────────────────────────────────────────
 // HTTP logging → winston
+// 'combined' in prod (structured, parseable), 'dev' in dev (colored one-liners)
 // ─────────────────────────────────────────────
-if (process.env.NODE_ENV !== 'production') {
-  app.use(
-    morgan('dev', {
-      stream: httpStream,
-    })
-  );
-}
+app.use(
+  morgan(isProduction ? 'combined' : 'dev', {
+    stream: httpStream,
+  })
+);
 
 // ─────────────────────────────────────────────
 // Routes
@@ -45,9 +46,9 @@ app.use('/', rootRoute);
 app.use('/health', healthRoute);
 
 // ─────────────────────────────────────────────
-// 404 + error handling (must be last)
+// Catch-all 404 + error handler (must be last)
 // ─────────────────────────────────────────────
-app.use(notFound);
+app.use(notFoundRoute);
 app.use(errorHandler);
 
 export default app;
