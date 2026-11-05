@@ -1,0 +1,26 @@
+# Dependencies
+node_modules
+
+# Build & deploy output
+dist
+build
+coverage
+.vercel
+
+# Lockfiles
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Minified assets
+*.min.js
+*.min.css
+
+# Logs
+*.log
+npm-debug.log*
