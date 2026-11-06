@@ -19,7 +19,7 @@ redisConnection.on('error', (err) => {
   logger.error('Worker Redis Connection Error', { error: err.message });
 });
 
-// 3. Initialize the BullMQ Worker with auto-cleanup rules
+// 3. Initialize the BullMQ Worker with auto-cleanup and optimized polling
 const worker = new Worker(
   'email-queue',
   async (job) => {
@@ -31,12 +31,16 @@ const worker = new Worker(
   },
   {
     connection: redisConnection,
+    // Process 1 job at a time to prevent CPU throttling on budget hosts
     concurrency: 1,
+    // Max 10 emails per second (protects Brevo)
     limiter: {
       max: 10,
       duration: 1000,
     },
-    // 👇 The key change: remove ALL finalized jobs immediately
+    // 👇 DRAMATICALLY REDUCES REDIS COMMANDS: Wait 60s between empty queue polls
+    drainDelay: 60,
+    // 👇 Auto-cleanup options placed directly on the Worker
     removeOnComplete: { count: 0 },
     removeOnFail: { count: 0 },
   }
