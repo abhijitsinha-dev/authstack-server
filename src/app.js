@@ -41,7 +41,9 @@ app.use(
 
 // ─────────────────────────────────────────────
 // API Documentation — served in all environments
-// NOTE: helmet CSP is disabled for this route only so Swagger UI can render.
+// CSP is disabled for this route only so Swagger UI can render.
+// Assets are loaded from a CDN because Vercel's serverless runtime
+// does not serve the local node_modules/swagger-ui-dist files reliably.
 // ─────────────────────────────────────────────
 app.use(
   '/api-docs',
@@ -50,12 +52,23 @@ app.use(
     crossOriginEmbedderPolicy: false,
   }),
   swaggerUi.serve,
-  swaggerUi.setup(swaggerSpec)
+  swaggerUi.setup(swaggerSpec, {
+    customCssUrl: 'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.15.5/swagger-ui.min.css',
+    customJs: [
+      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.15.5/swagger-ui-bundle.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.15.5/swagger-ui-standalone-preset.js',
+    ],
+  })
 );
+
+// ─────────────────────────────────────────────
+// Raw OpenAPI spec — useful for tooling and code generation
+// ─────────────────────────────────────────────
 app.get('/api-docs.json', (_req, res) => res.json(swaggerSpec));
 
 // ─────────────────────────────────────────────
-// Routes — must come AFTER Swagger UI so /api-docs
+// Routes — all routers mounted via the aggregator.
+// This must come AFTER Swagger UI so /api-docs
 // is claimed before the 404 catch-all fires.
 // ─────────────────────────────────────────────
 app.use(indexRoute);
