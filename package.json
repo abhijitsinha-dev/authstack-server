@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node --env-file=.env --watch src/server.js",
     "start": "node --env-file=.env src/server.js",
+    "worker": "node --env-file=.env worker/index.js",
     "vercel-build": "echo 'no build step'",
     "lint": "eslint .",
     "lint:cache": "eslint --cache .",
@@ -30,16 +31,17 @@
     "@getbrevo/brevo": "^6.2.0",
     "@vercel/functions": "^3.10.6",
     "bcryptjs": "^3.0.3",
+    "bullmq": "^6.7.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "express": "^5.3.0",
     "helmet": "^8.3.0",
+    "ioredis": "^6.0.0",
     "joi": "^18.3.2",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.12.0",
     "morgan": "^1.12.1",
     "swagger-jsdoc": "^6.3.0",
-    "swagger-ui-express": "^5.0.1",
     "winston": "^3.19.0"
   },
   "devDependencies": {
@@ -51,6 +53,7 @@
     "prettier": "^3.9.10"
   },
   "allowScripts": {
-    "@scarf/scarf": false
+    "@scarf/scarf": false,
+    "msgpackr-extract@3.0.7": true
   }
 }

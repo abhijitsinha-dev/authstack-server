@@ -6,22 +6,20 @@ import morgan from 'morgan';
 import { httpStream } from './config/logger.js';
 import { swaggerJsonHandler, swaggerUiHandler } from './config/swagger.js';
 
+// Route imports
+import rootRoute from './routes/root.route.js';
+import healthRoute from './routes/health.route.js';
 import indexRoute from './routes/index.route.js';
 import notFoundRoute from './routes/notFound.route.js';
 import { errorHandler } from './middlewares/error.middleware.js';
 
 const isProduction = process.env.NODE_ENV === 'production';
-
 const app = express();
 
 // Behind Vercel's proxy — needed for correct req.ip / req.protocol
 app.set('trust proxy', 1);
 
 // --- Security ---------------------------------------------------------------
-// Helmet with a CSP that permits the Swagger UI to load its assets from
-// jsdelivr and to run the inline init script. The default helmet() CSP
-// blocks external scripts + inline scripts, which is why /api-docs rendered
-// blank even though the CDN was reachable.
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -39,7 +37,7 @@ app.use(
 
 app.use(
   cors({
-    origin: isProduction ? '*' : true, // tighten in production once you have a frontend
+    origin: isProduction ? '*' : true,
     credentials: true,
   })
 );
@@ -52,15 +50,20 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan(isProduction ? 'combined' : 'dev', { stream: httpStream }));
 
 // --- API docs ---------------------------------------------------------------
-// Mount these BEFORE the 404 / error handlers so they are always reachable.
 app.get('/api-docs.json', swaggerJsonHandler);
 app.get('/api-docs', swaggerUiHandler);
 
-// --- Application routes -----------------------------------------------------
-app.use(indexRoute);
+// --- Infrastructure Routes (UNVERSIONED) ------------------------------------
+// Load balancers and monitors hit these directly.
+app.use('/', rootRoute);
+app.use('/health', healthRoute);
+
+// --- Business API Routes (VERSIONED) ----------------------------------------
+// All business logic lives under /api/v1 (e.g., /api/v1/auth/...)
+app.use('/api/v1', indexRoute);
 
 // --- 404 (JSON) -------------------------------------------------------------
-// If index.route.js already mounts the 404 at the end, remove this line.
+// Catches anything that didn't match the routes above.
 app.use(notFoundRoute);
 
 // --- Centralized error handler ---------------------------------------------
