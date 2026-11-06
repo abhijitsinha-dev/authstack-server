@@ -15,11 +15,26 @@ const options = {
       version: '1.0.0',
       description: 'Backend API for the authstack project — Express + MongoDB on Vercel.',
     },
-    servers: [{ url: '/', description: 'Current host (local or Vercel)' }],
-    tags: [
-      { name: 'Health', description: 'Health and readiness probes' },
-      { name: 'Root', description: 'Service metadata' },
+    servers: [
+      {
+        url: 'http://localhost:5000',
+        description: 'Local Development Server',
+      },
+      {
+        url: 'https://authstack-backend.vercel.app',
+        description: 'Production Server',
+      },
     ],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+        },
+      },
+    },
+    tags: [{ name: 'System', description: 'Health and readiness probes' }],
   },
   apis: ['./src/routes/*.route.js'],
 };
@@ -76,6 +91,7 @@ export const swaggerUiHandler = (_req, res) => {
         docExpansion: 'list',
         persistAuthorization: true,
         displayRequestDuration: true,
+        validatorUrl: null,
       });
     };
   </script>
