@@ -12,3 +12,10 @@ export const requestOtpSchema = Joi.object({
       'string.pattern.base': 'Password must contain at least one letter and one number',
     }),
 });
+
+export const resendOtpSchema = Joi.object({
+  email: Joi.string().email().lowercase().trim().required().messages({
+    'string.email': 'Please provide a valid email address.',
+    'any.required': 'Email is required.',
+  }),
+});

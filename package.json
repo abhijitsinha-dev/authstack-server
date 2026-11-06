@@ -29,6 +29,8 @@
   },
   "dependencies": {
     "@getbrevo/brevo": "^6.2.0",
+    "@upstash/ratelimit": "^2.2.0",
+    "@upstash/redis": "^1.41.0",
     "@vercel/functions": "^3.10.6",
     "bcryptjs": "^3.0.3",
     "bullmq": "^6.7.1",
