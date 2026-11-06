@@ -3,8 +3,10 @@ import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
+import swaggerUi from 'swagger-ui-express';
 
 import { httpStream } from './config/logger.js';
+import swaggerSpec from './config/swagger.js';
 import indexRoute from './routes/index.route.js';
 import { errorHandler } from './middlewares/error.middleware.js';
 
@@ -38,7 +40,23 @@ app.use(
 );
 
 // ─────────────────────────────────────────────
-// Routes — all routers mounted inside index.route.js
+// API Documentation — served in all environments
+// NOTE: helmet CSP is disabled for this route only so Swagger UI can render.
+// ─────────────────────────────────────────────
+app.use(
+  '/api-docs',
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  }),
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec)
+);
+app.get('/api-docs.json', (_req, res) => res.json(swaggerSpec));
+
+// ─────────────────────────────────────────────
+// Routes — must come AFTER Swagger UI so /api-docs
+// is claimed before the 404 catch-all fires.
 // ─────────────────────────────────────────────
 app.use(indexRoute);
 
