@@ -2,6 +2,7 @@ import User from '../models/user.model.js';
 import Otp from '../models/otp.model.js';
 import { generateHashedOtp } from '../utils/token.js';
 import { emailQueue } from '../queues/email.queue.js';
+import { sendSignupOtpEmail } from './email.service.js'; // <-- Import the email service
 import { ApiError } from '../utils/ApiError.js';
 import { logger } from '../config/logger.js';
 
@@ -29,11 +30,11 @@ export const requestSignupOtp = async ({ name, email, password }) => {
   await Otp.deleteMany({ email });
   await Otp.create({ email, codeHash: hashedOtp, expiresAt });
 
-  // 6. Push the email task to the BullMQ queue (Non-blocking)
+  // 6. Push the email task to the BullMQ queue (Asynchronous - fast API response)
   await emailQueue.add('send-otp', {
     email,
     name,
-    otp, // The plain text OTP is passed to the worker to be emailed
+    otp,
   });
 };
 
@@ -53,8 +54,6 @@ export const resendSignupOtp = async ({ email }) => {
   const existingOtp = await Otp.findOne({ email });
   if (existingOtp && existingOtp.createdAt) {
     const timeSinceLastRequest = Date.now() - existingOtp.createdAt.getTime();
-
-    // 20 seconds cooldown to match the route rate limiter
     const cooldownMs = 20 * 1000;
 
     if (timeSinceLastRequest < cooldownMs) {
@@ -71,12 +70,9 @@ export const resendSignupOtp = async ({ email }) => {
   await Otp.deleteMany({ email });
   await Otp.create({ email, codeHash: hashedOtp, expiresAt });
 
-  // 6. Push the email task to the BullMQ queue
-  await emailQueue.add('send-otp', {
-    email,
-    name: user.name,
-    otp,
-  });
+  // 6. Send the email SYNCHRONOUSLY (Await it)
+  // If Brevo fails, this throws an ApiError (500) and the user knows immediately.
+  await sendSignupOtpEmail(email, user.name, otp);
 
-  logger.info(`Resent OTP email request queued for ${email}`);
+  logger.info(`Resent OTP email sent synchronously to ${email}`);
 };

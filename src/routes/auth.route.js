@@ -183,7 +183,7 @@ router.route('/signup/request-otp').post(
  *                   type: string
  *                   example: User not found. Please sign up first.
  *       429:
- *         description: Rate limit exceeded (20-second cooldown or API rate limit)
+ *         description: Rate limit exceeded (IP limit or 20-second email cooldown)
  *         content:
  *           application/json:
  *             schema:
@@ -194,7 +194,24 @@ router.route('/signup/request-otp').post(
  *                   example: false
  *                 message:
  *                   type: string
- *                   example: Please wait 15 seconds before requesting a new code.
+ *                   description: |
+ *                     The specific reason for the rate limit. Possible values:
+ *                     - "Too many requests. Please try again later." (IP limit)
+ *                     - "Please wait X seconds before requesting a new code." (Email cooldown)
+ *                   example: Too many requests. Please try again later.
+ *       500:
+ *         description: Failed to send email via Brevo (Internal Server Error)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Internal server error
  */
 router.route('/signup/resend-otp').post(
   // Slightly stricter than request-otp to prevent DB hammering
