@@ -5,9 +5,7 @@ import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
 
 import { httpStream } from './config/logger.js';
-import rootRoute from './routes/root.route.js';
-import healthRoute from './routes/health.route.js';
-import notFoundRoute from './routes/notFound.route.js';
+import indexRoute from './routes/index.route.js';
 import { errorHandler } from './middlewares/error.middleware.js';
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -40,15 +38,13 @@ app.use(
 );
 
 // ─────────────────────────────────────────────
-// Routes
+// Routes — all routers mounted inside index.route.js
 // ─────────────────────────────────────────────
-app.use('/', rootRoute);
-app.use('/health', healthRoute);
+app.use(indexRoute);
 
 // ─────────────────────────────────────────────
-// Catch-all 404 + error handler (must be last)
+// Error handler (must be last)
 // ─────────────────────────────────────────────
-app.use(notFoundRoute);
 app.use(errorHandler);
 
 export default app;
