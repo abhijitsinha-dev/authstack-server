@@ -31,6 +31,7 @@ const worker = new Worker(
   },
   {
     connection: redisConnection,
+    concurrency: 1,
     limiter: {
       max: 10,
       duration: 1000,

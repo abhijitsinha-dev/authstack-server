@@ -24,7 +24,7 @@ export const sendSignupOtpEmail = async (email, name, otp) => {
         </html>
       `,
       sender: {
-        name: process.env.BREVO_SENDER_NAME || 'Authstack',
+        name: process.env.BREVO_SENDER_NAME || 'AuthStack',
         email: process.env.BREVO_SENDER_EMAIL,
       },
       to: [{ email, name }],
