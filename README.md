@@ -2,7 +2,7 @@
 
 Backend API for the authstack project — an Express + MongoDB service built for serverless deployment on Vercel, with a dedicated BullMQ worker for background processing.
 
-> **Status:** Authentication Flow (Signup). The OTP request and resend flows are fully implemented. JWT generation and OTP verification are next.
+> **Status:** Authentication Flow (Signup). The OTP request and resend flows are fully implemented and tested. JWT generation and OTP verification are next.
 
 ---
 
@@ -13,23 +13,25 @@ Backend API for the authstack project — an Express + MongoDB service built for
 - **Defense in Depth:** IP-based rate limiting (Upstash) + Email-based cooldowns (MongoDB).
 - **Dedicated Worker:** Separate Node.js process for processing background jobs.
 - **API Documentation:** Interactive Swagger UI available at `/api-docs`.
+- **Testing:** Comprehensive unit and integration test suite (Jest + Supertest) with ~94% coverage.
 - **Production Ready:** Winston logging, centralized error handling, helmet, CORS, and graceful shutdowns.
 
 ---
 
 ## Tech Stack
 
-| Layer         | Choice                                  |
-| :------------ | :-------------------------------------- |
-| Runtime       | Node.js 26 (LTS)                        |
-| Framework     | Express 5                               |
-| Database      | MongoDB (Atlas) via Mongoose            |
-| Queue / Cache | Redis (Upstash) via BullMQ              |
-| Email Service | Brevo (Transactional Email API)         |
-| Validation    | Joi                                     |
-| Logging       | Winston + morgan                        |
-| Documentation | Swagger (swagger-jsdoc)                 |
-| Deployment    | Vercel (API) + Hostless/Render (Worker) |
+| Layer         | Choice                                   |
+| :------------ | :--------------------------------------- |
+| Runtime       | Node.js 26 (LTS)                         |
+| Framework     | Express 5                                |
+| Database      | MongoDB (Atlas) via Mongoose             |
+| Queue / Cache | Redis (Upstash) via BullMQ               |
+| Email Service | Brevo (Transactional Email API)          |
+| Validation    | Joi                                      |
+| Logging       | Winston + morgan                         |
+| Documentation | Swagger (swagger-jsdoc)                  |
+| Testing       | Jest + Supertest + mongodb-memory-server |
+| Deployment    | Vercel (API) + Hostless/Render (Worker)  |
 
 ---
 
@@ -127,6 +129,7 @@ All business logic routes are versioned under `/api/v1`.
 | `npm run dev`    | Start API with auto-reload (`node --watch`) |
 | `npm start`      | Start API without watch                     |
 | `npm run worker` | Start the BullMQ background worker          |
+| `npm test`       | Run the Jest test suite                     |
 | `npm run lint`   | Run ESLint                                  |
 | `npm run format` | Format with Prettier                        |
 
@@ -149,12 +152,22 @@ server/
 │   ├── queues/                   # BullMQ queue definitions
 │   ├── routes/                   # Express routers
 │   ├── services/                 # Business logic (Auth, Email)
-│   ├── utils/                    # Helpers (ApiError, Token generation)
+│   ├── utils/                    # Helpers (ApiError, OTP generation)
 │   ├── validators/               # Joi validation schemas
 │   ├── app.js                    # Express app configuration
 │   └── server.js                 # Local dev entrypoint
+├── tests/                        # Jest test suites (Unit & Integration)
+│   ├── controllers/
+│   ├── middlewares/
+│   ├── models/
+│   ├── routes/
+│   ├── services/
+│   ├── utils/
+│   └── validators/
 ├── .env.example
 ├── .node-version
+├── jest.config.mjs
+├── jest.setup.js
 ├── vercel.json
 └── package.json
 ```

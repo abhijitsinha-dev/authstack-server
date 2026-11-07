@@ -5,10 +5,8 @@ import { sendSignupOtpEmail } from '../src/services/email.service.js';
 import { connectDB } from '../src/config/db.js';
 import { logger } from '../src/config/logger.js';
 
-// 1. Connect to MongoDB (in case future worker jobs need database access)
 await connectDB();
 
-// 2. Create the Redis connection instance
 const redisConnection = new IORedis(process.env.REDIS_URL, {
   maxRetriesPerRequest: null,
   keepAlive: 10000,
@@ -19,7 +17,6 @@ redisConnection.on('error', (err) => {
   logger.error('Worker Redis Connection Error', { error: err.message });
 });
 
-// 3. Initialize the BullMQ Worker with auto-cleanup and optimized polling
 const worker = new Worker(
   'email-queue',
   async (job) => {
@@ -31,22 +28,18 @@ const worker = new Worker(
   },
   {
     connection: redisConnection,
-    // Process 1 job at a time to prevent CPU throttling on budget hosts
     concurrency: 1,
-    // Max 10 emails per second (protects Brevo)
-    limiter: {
-      max: 10,
-      duration: 1000,
-    },
-    // 👇 DRAMATICALLY REDUCES REDIS COMMANDS: Wait 60s between empty queue polls
+    limiter: { max: 10, duration: 1000 },
     drainDelay: 60,
-    // 👇 Auto-cleanup options placed directly on the Worker
+    stalledInterval: 60000,
+    lockDuration: 120000,
+    skipStalledCheck: true,
+    skipLockRenewal: true,
     removeOnComplete: { count: 0 },
     removeOnFail: { count: 0 },
   }
 );
 
-// 4. Event Listeners for logging
 worker.on('completed', (job) => {
   logger.info(`Job ${job.id} completed successfully`);
 });
@@ -57,7 +50,6 @@ worker.on('failed', (job, err) => {
 
 logger.info('Worker started and listening for jobs...');
 
-// 5. Graceful shutdown
 const shutdown = async (signal) => {
   logger.warn(`Received ${signal}, shutting down worker gracefully...`);
   try {
