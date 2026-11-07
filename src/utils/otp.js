@@ -2,13 +2,6 @@ import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 
 /**
- * Fast hash (SHA-256) for high-entropy secrets like Refresh Tokens.
- */
-export const hashToken = (token) => {
-  return crypto.createHash('sha256').update(token).digest('hex');
-};
-
-/**
  * Generates a secure 6-digit OTP and hashes it with bcrypt.
  * Returns the plain OTP (for the email) and the bcrypt hash (for the DB).
  */

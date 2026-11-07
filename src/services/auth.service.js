@@ -1,6 +1,6 @@
 import User from '../models/user.model.js';
 import Otp from '../models/otp.model.js';
-import { generateHashedOtp } from '../utils/token.js';
+import { generateHashedOtp } from '../utils/otp.js';
 import { emailQueue } from '../queues/email.queue.js';
 import { sendSignupOtpEmail } from './email.service.js'; // <-- Import the email service
 import { ApiError } from '../utils/ApiError.js';

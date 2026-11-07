@@ -13,7 +13,8 @@
     "lint:cache": "eslint --cache .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules NODE_ENV=test jest --detectOpenHandles"
   },
   "keywords": [
     "authstack"
@@ -26,7 +27,8 @@
   },
   "overrides": {
     "minimatch": "^11.0.4",
-    "glob": "^14.0.2"
+    "glob": "^14.0.2",
+    "deepmerge": "npm:@stackline/deepmerge@^1.1.0"
   },
   "dependencies": {
     "@getbrevo/brevo": "^6.2.0",
@@ -49,14 +51,20 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "cross-env": "^10.1.0",
     "eslint": "^10.14.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-n": "^18.5.0",
     "globals": "^17.14.0",
-    "prettier": "^3.9.10"
+    "jest": "^30.5.2",
+    "mongodb-memory-server": "^11.3.0",
+    "prettier": "^3.9.10",
+    "supertest": "^7.3.1"
   },
   "allowScripts": {
     "@scarf/scarf": false,
-    "msgpackr-extract@3.0.7": true
+    "msgpackr-extract@3.0.7": true,
+    "@parcel/watcher@2.6.0": true,
+    "mongodb-memory-server@11.3.0": true
   }
 }
