@@ -71,3 +71,6 @@ tests/**           export-ignore
 *.js      linguist-language=JavaScript
 *.json    linguist-language=JSON
 *.md      linguist-documentation
+
+.husky/* text eol=lf
+.gitattributes text eol=lf
