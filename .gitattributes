@@ -1,11 +1,11 @@
 # ─────────────────────────────────────────────
-# Default: Auto-detect text files and normalize line endings
+# Default: Auto-detect text files, force LF on checkout
 # ─────────────────────────────────────────────
-* text=auto
+* text=auto eol=lf
 
 # ─────────────────────────────────────────────
 # Explicitly force LF for source files
-# (Critical for Vercel & cross-platform consistency)
+# (Ensures Git doesn't misidentify them)
 # ─────────────────────────────────────────────
 *.js      text eol=lf
 *.mjs     text eol=lf
@@ -14,13 +14,18 @@
 *.md      text eol=lf
 *.yml     text eol=lf
 *.yaml    text eol=lf
-*.sh      text eol=lf
 
 # ─────────────────────────────────────────────
-# Scripts that must NEVER have CRLF (Windows)
+# Shell scripts & Hooks — MUST NEVER have CRLF
 # ─────────────────────────────────────────────
 *.sh      text eol=lf
 *.bash    text eol=lf
+.husky/*  text eol=lf
+
+# ─────────────────────────────────────────────
+# Git config — MUST be LF to prevent parsing issues
+# ─────────────────────────────────────────────
+.gitattributes text eol=lf
 
 # ─────────────────────────────────────────────
 # Binary files (Git should never diff/merge these)
@@ -58,8 +63,7 @@ pnpm-lock.yaml     merge=binary
 npm-shrinkwrap.json merge=binary
 
 # ─────────────────────────────────────────────
-# Prevent Git from showing these as "modified"
-# (they are auto-generated)
+# Prevent Git from exporting these
 # ─────────────────────────────────────────────
 .vercel/**         export-ignore
 .github/**         export-ignore
@@ -71,6 +75,3 @@ tests/**           export-ignore
 *.js      linguist-language=JavaScript
 *.json    linguist-language=JSON
 *.md      linguist-documentation
-
-.husky/* text eol=lf
-.gitattributes text eol=lf

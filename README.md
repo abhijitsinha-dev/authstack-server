@@ -193,6 +193,12 @@ Because Vercel functions are ephemeral and cannot maintain persistent TCP connec
 
 ---
 
+## Contributing
+
+We welcome contributions of all kinds! Please read our **[Contributing Guide](./CONTRIBUTING.md)** to learn about our development setup, branch naming conventions, and the **[Commit Convention](./docs/COMMIT_CONVENTION.md)** we use to keep our Git history clean.
+
+---
+
 ## License
 
 This project is open source under the **ISC License** — see [LICENSE](./LICENSE) for details.

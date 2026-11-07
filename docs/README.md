@@ -20,3 +20,7 @@ We use ADRs to document significant technical decisions, their context, and thei
   _Why the initial OTP request is queued, but the resend OTP request is synchronous._
 - **[ADR-003: Defense-in-Depth Rate Limiting](./decisions/ADR-003-defense-in-depth-rate-limiting.md)**
   _Why we use both Upstash (IP-based) and MongoDB (Email-based) rate limits._
+
+### Development Standards
+
+- **[Commit Convention](./COMMIT_CONVENTION.md)** — The strict rules for formatting Git commit messages (enforced by Commitlint).
