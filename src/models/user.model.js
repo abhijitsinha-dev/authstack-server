@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
-import validator from 'validator';
+import { isEmail, isStrongPassword } from '../utils/validator.js';
 
 const userSchema = new mongoose.Schema(
   {
@@ -12,7 +12,7 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
       validate: {
-        validator: validator.isEmail,
+        validator: isEmail,
         message: 'Please provide a valid email address.',
       },
     },
@@ -27,7 +27,7 @@ const userSchema = new mongoose.Schema(
           if (!this.isModified('password')) return true;
 
           // Uses default rules: 8 chars, 1 lowercase, 1 uppercase, 1 number, 1 symbol
-          return validator.isStrongPassword(value);
+          return isStrongPassword(value);
         },
         message:
           'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.',

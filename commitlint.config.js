@@ -15,27 +15,29 @@ const TYPES = {
   revert: '🗑',
 };
 
+const HEADER_PATTERN = /^(\w+)(?:\(([^)]*)\))?!?:\s*(\S.*)$/;
+
 export default {
   extends: ['@commitlint/config-conventional'],
 
   // 2. Custom Parser
   parserPreset: {
     parserOpts: {
-      headerPattern: /^(\w*)(?:\((.*)\))?!?:\s*(.*)$/,
-      breakingHeaderPattern: /^(\w*)(?:\((.*)\))?!?:\s*(.*)$/,
+      headerPattern: HEADER_PATTERN,
+      breakingHeaderPattern: HEADER_PATTERN,
     },
   },
 
-  // 3. Custom Plugins for Warnings
+  // 3. Custom Plugins for Warnings & Lowercase Rule
   plugins: [
     {
       rules: {
         'header-emoji-warning': ({ header }) => {
-          const match = header.match(/^(\w*)(?:\((.*)\))?!?:\s*(.*)$/);
+          const match = header.match(HEADER_PATTERN);
           if (!match) return [true];
 
           const subject = match[3];
-          const hasEmoji = /^\p{Emoji_Presentation}|\p{Extended_Pictographic}/u.test(subject);
+          const hasEmoji = /^(?:\p{Emoji_Presentation}|\p{Extended_Pictographic})/u.test(subject);
 
           return [hasEmoji, 'emoji is recommended in the header (e.g., "feat: ✨ add feature")'];
         },
@@ -51,6 +53,26 @@ export default {
             }
           }
           return [true];
+        },
+        // 👇 New custom rule: Enforce lowercase, but ignore filenames
+        'subject-lowercase-files-exception': ({ header }) => {
+          const match = header.match(HEADER_PATTERN);
+          if (!match) return [true];
+          const subject = match[3];
+
+          // Remove filenames from the subject before checking for uppercase.
+          // Matches words with extensions (e.g., README.md, App.tsx) and dotfiles (e.g., .env)
+          const subjectWithoutFiles = subject
+            .replace(/\b[\w-]+\.[a-zA-Z0-9]+\b/g, '')
+            .replace(/\.[a-zA-Z0-9]+\b/g, '');
+
+          // Check if any uppercase letters remain
+          const hasUppercase = /[A-Z]/.test(subjectWithoutFiles);
+
+          return [
+            !hasUppercase,
+            'subject must be lowercase (except for filenames like README.md or App.tsx)',
+          ];
         },
       },
     },
@@ -68,8 +90,10 @@ export default {
     'body-full-stop': [2, 'never', '.'],
     'subject-empty': [2, 'never'],
 
+    // 👇 Enforce our new lowercase rule as an ERROR
+    'subject-lowercase-files-exception': [2, 'always'],
+
     // --- WARNINGS (Recommended Rules) ---
-    // Level 1 = Warning, 'never' means it should NEVER be empty
     'scope-empty': [1, 'never'],
     'header-emoji-warning': [1, 'always'],
     'header-colon-space-warning': [1, 'always'],

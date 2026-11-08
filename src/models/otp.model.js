@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import validator from 'validator'; // 👈 Import validator
+import { isEmail } from '../utils/validator.js';
 
 const otpSchema = new mongoose.Schema(
   {
@@ -9,7 +9,7 @@ const otpSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
       validate: {
-        validator: validator.isEmail,
+        validator: isEmail,
         message: 'Please provide a valid email address.',
       },
     },

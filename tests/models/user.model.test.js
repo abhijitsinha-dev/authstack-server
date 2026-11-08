@@ -27,7 +27,7 @@ describe('User Model', () => {
   const validUser = {
     name: 'John Doe',
     email: 'john@example.com',
-    password: 'Password123!', // 👈 Added '!' to satisfy validator.isStrongPassword
+    password: 'Password123!',
   };
 
   it('should hash the password before saving', async () => {

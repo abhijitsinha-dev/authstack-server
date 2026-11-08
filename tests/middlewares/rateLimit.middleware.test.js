@@ -33,7 +33,7 @@ describe('rateLimit middleware', () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
-    req = { ip: '192.168.1.1' };
+    req = { ip: '127.0.0.1' };
     res = {
       setHeader: jest.fn(),
       status: jest.fn().mockReturnThis(),
@@ -49,7 +49,7 @@ describe('rateLimit middleware', () => {
 
     await middleware(req, res, next);
 
-    expect(mockLimitFn).toHaveBeenCalledWith('192.168.1.1');
+    expect(mockLimitFn).toHaveBeenCalledWith('127.0.0.1');
     expect(res.setHeader).toHaveBeenCalledWith('X-RateLimit-Limit', 5);
     expect(res.setHeader).toHaveBeenCalledWith('X-RateLimit-Remaining', 4);
     expect(next).toHaveBeenCalledWith();

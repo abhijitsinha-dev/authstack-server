@@ -1,5 +1,5 @@
 import Joi from 'joi';
-import validator from 'validator';
+import { isStrongPassword } from '../utils/validator.js';
 
 export const requestOtpSchema = Joi.object({
   name: Joi.string().trim().min(2).max(50).required(),
@@ -9,7 +9,7 @@ export const requestOtpSchema = Joi.object({
     .max(72)
     .required()
     .custom((value, helpers) => {
-      if (!validator.isStrongPassword(value)) {
+      if (!isStrongPassword(value)) {
         return helpers.message({
           custom:
             'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.',
