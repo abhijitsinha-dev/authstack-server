@@ -35,7 +35,7 @@ const isProduction = process.env.NODE_ENV === 'production';
  *               password:
  *                 type: string
  *                 format: password
- *                 example: Password123
+ *                 example: Password123!
  *     responses:
  *       200:
  *         description: OTP sent successfully
@@ -68,7 +68,7 @@ const isProduction = process.env.NODE_ENV === 'production';
  *                   example: false
  *                 message:
  *                   type: string
- *                   example: Password must contain at least one letter and one number
+ *                   example: Password must be at least 8 characters long and contain at least one  uppercase letter, one lowercase letter, one number, and one symbol.
  *       409:
  *         description: Email already exists and is verified
  *         content:
