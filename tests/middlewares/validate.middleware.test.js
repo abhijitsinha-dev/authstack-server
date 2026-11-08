@@ -5,7 +5,13 @@ import { ApiError } from '../../src/utils/ApiError.js';
 
 describe('validate middleware', () => {
   it('should attach valid data to req.body and call next()', () => {
-    const req = { body: { name: 'John', email: 'john@example.com', password: 'Password123' } };
+    const req = {
+      body: {
+        name: 'John',
+        email: 'john@example.com',
+        password: 'Password123!', // 👈 Added '!'
+      },
+    };
     const next = jest.fn();
 
     validate(requestOtpSchema)(req, {}, next);
@@ -20,7 +26,7 @@ describe('validate middleware', () => {
       body: {
         name: 'John',
         email: 'not-an-email', // 👈 the actual thing we're testing
-        password: 'Password123',
+        password: 'Password123!', // 👈 Added '!' so the password passes validation
       },
     };
     const next = jest.fn();

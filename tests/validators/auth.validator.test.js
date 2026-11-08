@@ -13,7 +13,7 @@ describe('auth.validator', () => {
     const validPayload = {
       name: 'John Doe',
       email: 'john@example.com',
-      password: 'Password123',
+      password: 'Password123!', // 👈 Added '!' to satisfy strong password rules
     };
 
     it('should accept a fully valid payload', () => {
@@ -50,21 +50,21 @@ describe('auth.validator', () => {
     });
 
     it('should reject a password shorter than 8 characters', () => {
-      const { error } = validate(requestOtpSchema, { ...validPayload, password: 'Pass12' });
+      const { error } = validate(requestOtpSchema, { ...validPayload, password: 'Pass12!' });
       expect(error).toBeDefined();
       expect(error.details[0].message).toContain('8');
     });
 
     it('should reject a password without a number', () => {
-      const { error } = validate(requestOtpSchema, { ...validPayload, password: 'PasswordOnly' });
+      const { error } = validate(requestOtpSchema, { ...validPayload, password: 'PasswordOnly!' });
       expect(error).toBeDefined();
-      expect(error.details[0].message).toContain('letter and one number');
+      expect(error.details[0].message).toContain('one number'); // 👈 Updated assertion
     });
 
     it('should reject a password without a letter', () => {
-      const { error } = validate(requestOtpSchema, { ...validPayload, password: '12345678' });
+      const { error } = validate(requestOtpSchema, { ...validPayload, password: '12345678!' });
       expect(error).toBeDefined();
-      expect(error.details[0].message).toContain('letter and one number');
+      expect(error.details[0].message).toContain('one lowercase letter'); // 👈 Updated assertion
     });
 
     it('should strip unknown fields when stripUnknown is enabled', () => {

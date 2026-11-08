@@ -1,10 +1,26 @@
 import mongoose from 'mongoose';
+import validator from 'validator'; // 👈 Import validator
 
 const otpSchema = new mongoose.Schema(
   {
-    email: { type: String, required: true, lowercase: true, trim: true },
-    codeHash: { type: String, required: true },
-    expiresAt: { type: Date, required: true },
+    email: {
+      type: String,
+      required: true,
+      lowercase: true,
+      trim: true,
+      validate: {
+        validator: validator.isEmail,
+        message: 'Please provide a valid email address.',
+      },
+    },
+    codeHash: {
+      type: String,
+      required: true,
+    },
+    expiresAt: {
+      type: Date,
+      required: true,
+    },
   },
   { timestamps: true }
 );
