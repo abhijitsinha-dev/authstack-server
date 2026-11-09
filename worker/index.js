@@ -30,7 +30,7 @@ const worker = new Worker(
     connection: redisConnection,
     concurrency: 1,
     limiter: { max: 10, duration: 1000 },
-    drainDelay: 60,
+    drainDelay: 300,
     stalledInterval: 60000,
     lockDuration: 120000,
     skipStalledCheck: true,

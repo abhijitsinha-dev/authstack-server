@@ -1,6 +1,10 @@
 import { Router } from 'express';
-import { requestOtp, resendOtp } from '../controllers/auth.controller.js';
-import { requestOtpSchema, resendOtpSchema } from '../validators/auth.validator.js';
+import { requestOtp, resendOtp, verifyOtp } from '../controllers/auth.controller.js';
+import {
+  requestOtpSchema,
+  resendOtpSchema,
+  verifyOtpSchema,
+} from '../validators/auth.validator.js';
 import { validate } from '../middlewares/validate.middleware.js';
 import { rateLimit } from '../middlewares/rateLimit.middleware.js';
 
@@ -219,5 +223,108 @@ router.route('/signup/resend-otp').post(
   validate(resendOtpSchema),
   resendOtp
 );
+
+/**
+ * @swagger
+ * /api/v1/auth/signup/verify-otp:
+ *   post:
+ *     summary: Verify OTP and complete signup
+ *     description: Verifies the 6-digit OTP. Marks the user as verified, creates a session, and issues JWT tokens. Web clients receive the refresh token as an HttpOnly cookie, while mobile clients receive it in the JSON body.
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - otp
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: john@example.com
+ *               otp:
+ *                 type: string
+ *                 example: "123456"
+ *     responses:
+ *       200:
+ *         description: Successfully verified
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Account verified successfully.
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     user:
+ *                       type: object
+ *                       properties:
+ *                         id: { type: string }
+ *                         name: { type: string }
+ *                         email: { type: string }
+ *                         role: { type: string }
+ *                     accessToken:
+ *                       type: string
+ *       400:
+ *         description: Invalid OTP or user already verified
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   description: |
+ *                     The specific reason for the error. Possible values:
+ *                     - "User is already verified. Please log in."
+ *                     - "OTP has expired or does not exist. Please request a new one."
+ *                     - "Invalid OTP code. You have X attempts remaining."
+ *                   example: Invalid OTP code. You have 4 attempts remaining.
+ *       404:
+ *         description: User not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: User not found. Please request a new OTP.
+ *       429:
+ *         description: Maximum verification attempts exceeded
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Maximum verification attempts exceeded. Please request a new OTP.
+ */
+router
+  .route('/signup/verify-otp')
+  .post(
+    rateLimit({ limit: isProduction ? 10 : 100, window: '1 m', prefix: 'ratelimit:verify-otp' }),
+    validate(verifyOtpSchema),
+    verifyOtp
+  );
 
 export default router;

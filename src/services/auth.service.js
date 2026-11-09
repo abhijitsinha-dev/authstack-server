@@ -1,10 +1,17 @@
+import bcrypt from 'bcryptjs';
+import mongoose from 'mongoose';
 import User from '../models/user.model.js';
 import Otp from '../models/otp.model.js';
+import Session from '../models/session.model.js';
+import { generateAccessToken, generateRefreshToken, hashToken } from '../utils/jwt.js';
 import { generateHashedOtp } from '../utils/otp.js';
 import { emailQueue } from '../queues/email.queue.js';
-import { sendSignupOtpEmail } from './email.service.js'; // <-- Import the email service
+import { sendSignupOtpEmail } from './email.service.js';
 import { ApiError } from '../utils/ApiError.js';
 import { logger } from '../config/logger.js';
+
+// Maximum OTP attempts before lockout
+const MAX_OTP_ATTEMPTS = 5;
 
 export const requestSignupOtp = async ({ name, email, password }) => {
   // 1. Check if the user already exists and is verified
@@ -75,4 +82,67 @@ export const resendSignupOtp = async ({ email }) => {
   await sendSignupOtpEmail(email, user.name, otp);
 
   logger.info(`Resent OTP email sent synchronously to ${email}`);
+};
+
+export const verifySignupOtp = async ({ email, otp, ip, userAgent }) => {
+  // 1. Find and validate the user FIRST (fail fast)
+  const user = await User.findOne({ email });
+
+  if (!user) throw new ApiError(404, 'User not found. Please request a new OTP.');
+  if (user.isVerified) throw new ApiError(400, 'User is already verified. Please log in.');
+
+  // 2. Only fetch the OTP if the user is valid and unverified
+  const otpRecord = await Otp.findOne({ email });
+  if (!otpRecord)
+    throw new ApiError(400, 'OTP has expired or does not exist. Please request a new one.');
+
+  // 3. Check if they are locked out
+  if (otpRecord.attempts >= MAX_OTP_ATTEMPTS) {
+    throw new ApiError(429, 'Maximum verification attempts exceeded. Please request a new OTP.');
+  }
+
+  // 4. Verify the OTP
+  const isMatch = await bcrypt.compare(otp, otpRecord.codeHash);
+
+  if (!isMatch) {
+    otpRecord.attempts += 1;
+    await otpRecord.save();
+
+    if (otpRecord.attempts >= MAX_OTP_ATTEMPTS) {
+      throw new ApiError(429, 'Maximum verification attempts exceeded. Please request a new OTP.');
+    }
+
+    throw new ApiError(
+      400,
+      `Invalid OTP code. You have ${MAX_OTP_ATTEMPTS - otpRecord.attempts} attempts remaining.`
+    );
+  }
+
+  // 5. OTP is valid! Delete it
+  await Otp.deleteOne({ _id: otpRecord._id });
+
+  // 6. Mark user as verified
+  user.isVerified = true;
+  await user.save();
+
+  // 7. Generate tokens and create session
+  const sessionId = new mongoose.Types.ObjectId();
+  const accessToken = generateAccessToken(user._id, sessionId);
+  const refreshToken = generateRefreshToken(user._id, sessionId);
+
+  const refreshTokenHash = hashToken(refreshToken);
+  const expiresAt = new Date(
+    Date.now() + (Number(process.env.REFRESH_TOKEN_TTL_DAYS) || 30) * 864e5
+  );
+
+  await Session.create({
+    _id: sessionId,
+    user: user._id,
+    refreshTokenHash,
+    ip,
+    userAgent,
+    expiresAt,
+  });
+
+  return { user, accessToken, refreshToken };
 };

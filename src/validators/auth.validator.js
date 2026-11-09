@@ -25,3 +25,11 @@ export const resendOtpSchema = Joi.object({
     'any.required': 'Email is required.',
   }),
 });
+
+export const verifyOtpSchema = Joi.object({
+  email: Joi.string().email().lowercase().trim().required(),
+  otp: Joi.string().length(6).pattern(/^\d+$/).required().messages({
+    'string.length': 'OTP must be exactly 6 digits',
+    'string.pattern.base': 'OTP must contain only numbers',
+  }),
+});

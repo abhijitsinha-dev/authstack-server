@@ -32,7 +32,8 @@ describe('Otp Model', () => {
     expect(savedOtp._id).toBeDefined();
     expect(savedOtp.email).toBe(validOtp.email);
     expect(savedOtp.codeHash).toBe(validOtp.codeHash);
-    expect(savedOtp.createdAt).toBeDefined(); // From timestamps: true
+    expect(savedOtp.createdAt).toBeDefined();
+    expect(savedOtp.attempts).toBe(0);
   });
 
   it('should fail validation if required fields are missing', async () => {

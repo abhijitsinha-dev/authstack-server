@@ -1,4 +1,8 @@
-import { requestOtpSchema, resendOtpSchema } from '../../src/validators/auth.validator.js';
+import {
+  requestOtpSchema,
+  resendOtpSchema,
+  verifyOtpSchema,
+} from '../../src/validators/auth.validator.js';
 
 // Helper: replicate the EXACT options your middleware uses
 const validate = (schema, payload) =>
@@ -126,6 +130,63 @@ describe('auth.validator', () => {
       });
       expect(error).toBeUndefined();
       expect(value.otp).toBeUndefined();
+    });
+  });
+
+  // 👇 NEW TESTS FOR VERIFY OTP
+  describe('verifyOtpSchema', () => {
+    const validPayload = {
+      email: 'john@example.com',
+      otp: '123456',
+    };
+
+    it('should accept a fully valid payload', () => {
+      const { error, value } = validate(verifyOtpSchema, validPayload);
+      expect(error).toBeUndefined();
+      expect(value).toEqual(validPayload);
+    });
+
+    it('should reject a missing email', () => {
+      const { error } = validate(verifyOtpSchema, { ...validPayload, email: undefined });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('email');
+    });
+
+    it('should reject an invalid email format', () => {
+      const { error } = validate(verifyOtpSchema, { ...validPayload, email: 'not-an-email' });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('email');
+    });
+
+    it('should reject a missing OTP', () => {
+      const { error } = validate(verifyOtpSchema, { ...validPayload, otp: undefined });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('otp');
+    });
+
+    it('should reject an OTP that is not exactly 6 digits', () => {
+      const { error: errorShort } = validate(verifyOtpSchema, { ...validPayload, otp: '123' });
+      expect(errorShort).toBeDefined();
+      expect(errorShort.details[0].message).toContain('6 digits');
+
+      const { error: errorLong } = validate(verifyOtpSchema, { ...validPayload, otp: '1234567' });
+      expect(errorLong).toBeDefined();
+      expect(errorLong.details[0].message).toContain('6 digits');
+    });
+
+    it('should reject a non-numeric OTP', () => {
+      const { error } = validate(verifyOtpSchema, { ...validPayload, otp: '12345a' });
+      expect(error).toBeDefined();
+      expect(error.details[0].message).toContain('numbers');
+    });
+
+    it('should strip unknown fields when stripUnknown is enabled', () => {
+      const { error, value } = validate(verifyOtpSchema, {
+        ...validPayload,
+        isAdmin: true,
+      });
+      expect(error).toBeUndefined();
+      expect(value.isAdmin).toBeUndefined();
     });
   });
 });

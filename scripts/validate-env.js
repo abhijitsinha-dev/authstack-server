@@ -15,6 +15,11 @@ const envSchema = Joi.object({
   REDIS_URL: Joi.string().required(),
   UPSTASH_REDIS_REST_URL: Joi.string().uri().required(),
   UPSTASH_REDIS_REST_TOKEN: Joi.string().required(),
+
+  ACCESS_TOKEN_SECRET: Joi.string().min(32).required(),
+  REFRESH_TOKEN_SECRET: Joi.string().min(32).required(),
+  ACCESS_TOKEN_TTL: Joi.string().default('15m'),
+  REFRESH_TOKEN_TTL_DAYS: Joi.number().default(30),
 }).unknown(true); // Allow system vars (PATH, VERCEL_URL, etc.)
 
 const { error } = envSchema.validate(process.env);

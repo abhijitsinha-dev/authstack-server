@@ -17,6 +17,13 @@ jest.unstable_mockModule('../../src/models/otp.model.js', () => ({
   default: {
     findOne: jest.fn(),
     deleteMany: jest.fn(),
+    deleteOne: jest.fn(),
+    create: jest.fn(),
+  },
+}));
+
+jest.unstable_mockModule('../../src/models/session.model.js', () => ({
+  default: {
     create: jest.fn(),
   },
 }));
@@ -26,14 +33,26 @@ jest.unstable_mockModule('../../src/queues/email.queue.js', () => ({
   emailQueue: { add: jest.fn() },
 }));
 
-// Mock the Email Service (for the synchronous resend)
+// Mock the Email Service
 jest.unstable_mockModule('../../src/services/email.service.js', () => ({
   sendSignupOtpEmail: jest.fn(),
 }));
 
-// Mock the OTP Generator to return a predictable value
+// Mock the OTP Generator
 jest.unstable_mockModule('../../src/utils/otp.js', () => ({
   generateHashedOtp: jest.fn().mockResolvedValue({ otp: '123456', hashedOtp: 'hashed-otp' }),
+}));
+
+// Mock Bcrypt
+jest.unstable_mockModule('bcryptjs', () => ({
+  default: { compare: jest.fn() },
+}));
+
+// Mock JWT Utilities
+jest.unstable_mockModule('../../src/utils/jwt.js', () => ({
+  generateAccessToken: jest.fn().mockReturnValue('fake-access-token'),
+  generateRefreshToken: jest.fn().mockReturnValue('fake-refresh-token'),
+  hashToken: jest.fn().mockReturnValue('fake-hash'),
 }));
 
 // Mock the Logger
@@ -46,9 +65,12 @@ jest.unstable_mockModule('../../src/config/logger.js', () => ({
 // ─────────────────────────────────────────────
 const { default: User } = await import('../../src/models/user.model.js');
 const { default: Otp } = await import('../../src/models/otp.model.js');
+const { default: Session } = await import('../../src/models/session.model.js');
+const { default: bcrypt } = await import('bcryptjs');
 const { emailQueue } = await import('../../src/queues/email.queue.js');
 const { sendSignupOtpEmail } = await import('../../src/services/email.service.js');
-const { requestSignupOtp, resendSignupOtp } = await import('../../src/services/auth.service.js');
+const { requestSignupOtp, resendSignupOtp, verifySignupOtp } =
+  await import('../../src/services/auth.service.js');
 
 // ─────────────────────────────────────────────
 // 3. TESTS
@@ -59,7 +81,7 @@ describe('auth.service', () => {
   });
 
   describe('requestSignupOtp', () => {
-    const payload = { name: 'John', email: 'john@example.com', password: 'Password123' };
+    const payload = { name: 'John', email: 'john@example.com', password: 'Password123!' };
 
     it('should throw 409 if user exists and is already verified', async () => {
       User.findOne.mockResolvedValue({ isVerified: true });
@@ -71,7 +93,6 @@ describe('auth.service', () => {
     });
 
     it('should delete old user, create new user, save OTP, and push to queue', async () => {
-      // Setup mocks
       User.findOne.mockResolvedValue({ _id: 'old-id', isVerified: false });
       User.deleteOne.mockResolvedValue({});
       User.create.mockResolvedValue({ _id: 'new-id' });
@@ -81,7 +102,6 @@ describe('auth.service', () => {
 
       await requestSignupOtp(payload);
 
-      // Assertions
       expect(User.deleteOne).toHaveBeenCalledWith({ _id: 'old-id' });
       expect(User.create).toHaveBeenCalledWith(payload);
       expect(Otp.create).toHaveBeenCalledWith(
@@ -100,7 +120,6 @@ describe('auth.service', () => {
 
     it('should throw 404 if user does not exist', async () => {
       User.findOne.mockResolvedValue(null);
-
       await expect(resendSignupOtp({ email })).rejects.toThrow(
         'User not found. Please sign up first.'
       );
@@ -108,7 +127,6 @@ describe('auth.service', () => {
 
     it('should throw 400 if user is already verified', async () => {
       User.findOne.mockResolvedValue({ isVerified: true });
-
       await expect(resendSignupOtp({ email })).rejects.toThrow(
         'Account is already verified. Please log in.'
       );
@@ -116,7 +134,6 @@ describe('auth.service', () => {
 
     it('should throw 429 if the cooldown (20s) has not passed', async () => {
       User.findOne.mockResolvedValue({ isVerified: false });
-      // Mock an OTP created 5 seconds ago
       Otp.findOne.mockResolvedValue({ createdAt: new Date(Date.now() - 5000) });
 
       await expect(resendSignupOtp({ email })).rejects.toThrow(/Please wait \d+ seconds/);
@@ -125,7 +142,6 @@ describe('auth.service', () => {
 
     it('should generate new OTP and send email synchronously if cooldown passed', async () => {
       User.findOne.mockResolvedValue({ name: 'John', isVerified: false });
-      // Mock an OTP created 25 seconds ago
       Otp.findOne.mockResolvedValue({ createdAt: new Date(Date.now() - 25000) });
       Otp.deleteMany.mockResolvedValue({});
       Otp.create.mockResolvedValue({});
@@ -135,6 +151,109 @@ describe('auth.service', () => {
 
       expect(Otp.create).toHaveBeenCalled();
       expect(sendSignupOtpEmail).toHaveBeenCalledWith('john@example.com', 'John', '123456');
+    });
+  });
+
+  describe('verifySignupOtp', () => {
+    const payload = {
+      email: 'john@example.com',
+      otp: '123456',
+      ip: '127.0.0.1',
+      userAgent: 'test',
+    };
+    let mockUser;
+
+    beforeEach(() => {
+      mockUser = { _id: 'user123', isVerified: false, save: jest.fn() };
+      User.findOne.mockResolvedValue(mockUser);
+    });
+
+    it('should throw 404 if user does not exist (and NOT query OTP)', async () => {
+      User.findOne.mockResolvedValue(null);
+      Otp.findOne.mockClear(); // Reset call count for this test
+
+      await expect(verifySignupOtp(payload)).rejects.toThrow('User not found');
+
+      // 👇 Proves the fail-fast optimization
+      expect(Otp.findOne).not.toHaveBeenCalled();
+    });
+
+    it('should throw 400 if user is already verified (and NOT query OTP)', async () => {
+      User.findOne.mockResolvedValue({ isVerified: true });
+      Otp.findOne.mockClear();
+
+      await expect(verifySignupOtp(payload)).rejects.toThrow('User is already verified');
+
+      // 👇 Proves the fail-fast optimization
+      expect(Otp.findOne).not.toHaveBeenCalled();
+    });
+
+    it('should throw 400 if OTP record does not exist', async () => {
+      Otp.findOne.mockResolvedValue(null);
+      await expect(verifySignupOtp(payload)).rejects.toThrow('OTP has expired or does not exist');
+    });
+
+    it('should throw 429 immediately if already locked out, without calling bcrypt', async () => {
+      Otp.findOne.mockResolvedValue({ attempts: 5 });
+      bcrypt.compare.mockClear();
+
+      await expect(verifySignupOtp(payload)).rejects.toThrow(
+        'Maximum verification attempts exceeded'
+      );
+
+      // 👇 Proves we bail out before wasting CPU on bcrypt
+      expect(bcrypt.compare).not.toHaveBeenCalled();
+    });
+
+    it('should increment attempts and throw 400 on wrong OTP', async () => {
+      const mockOtpRecord = { attempts: 1, save: jest.fn() };
+      Otp.findOne.mockResolvedValue(mockOtpRecord);
+      bcrypt.compare.mockResolvedValue(false); // Wrong OTP
+
+      await expect(verifySignupOtp(payload)).rejects.toThrow('You have 3 attempts remaining');
+      expect(mockOtpRecord.attempts).toBe(2);
+      expect(mockOtpRecord.save).toHaveBeenCalled();
+    });
+
+    it('should save the record and throw 429 when the 5th wrong attempt is made', async () => {
+      // Mock a record with 4 attempts. One more wrong attempt = 5.
+      const mockOtpRecord = { _id: 'otp123', attempts: 4, save: jest.fn() };
+      Otp.findOne.mockResolvedValue(mockOtpRecord);
+      bcrypt.compare.mockResolvedValue(false);
+
+      await expect(verifySignupOtp(payload)).rejects.toThrow(
+        'Maximum verification attempts exceeded'
+      );
+
+      // 👇 FIX: We now SAVE (not delete) to preserve the lockout state
+      expect(mockOtpRecord.attempts).toBe(5);
+      expect(mockOtpRecord.save).toHaveBeenCalled();
+      expect(Otp.deleteOne).not.toHaveBeenCalled();
+    });
+
+    it('should verify user, create session, and return tokens on success', async () => {
+      Otp.findOne.mockResolvedValue({ _id: 'otp123', codeHash: 'hash' });
+      bcrypt.compare.mockResolvedValue(true); // Correct OTP
+      Session.create.mockResolvedValue({});
+
+      const result = await verifySignupOtp(payload);
+
+      // Assertions
+      expect(Otp.deleteOne).toHaveBeenCalledWith({ _id: 'otp123' });
+      expect(mockUser.isVerified).toBe(true);
+      expect(mockUser.save).toHaveBeenCalled();
+
+      expect(Session.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user: 'user123',
+          ip: '127.0.0.1',
+          userAgent: 'test',
+          refreshTokenHash: 'fake-hash',
+        })
+      );
+
+      expect(result.accessToken).toBe('fake-access-token');
+      expect(result.refreshToken).toBe('fake-refresh-token');
     });
   });
 });
