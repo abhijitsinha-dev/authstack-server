@@ -20,6 +20,8 @@ We use ADRs to document significant technical decisions, their context, and thei
   _Why the initial OTP request is queued, but the resend OTP request is synchronous._
 - **[ADR-003: Defense-in-Depth Rate Limiting](./decisions/ADR-003-defense-in-depth-rate-limiting.md)**
   _Why we use both Upstash (IP-based) and MongoDB (Email-based) rate limits._
+- **[ADR-004: JWT Token Strategy & Session Management](./decisions/ADR-004-token-strategy.md)**
+  _Why we use SHA-256 for refresh tokens but Bcrypt for OTPs, and how we handle Web vs. Mobile clients._
 
 ### Development Standards
 

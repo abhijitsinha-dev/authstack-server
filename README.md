@@ -2,19 +2,19 @@
 
 Backend API for the authstack project — an Express + MongoDB service built for serverless deployment on Vercel, with a dedicated BullMQ worker for background processing.
 
-> **Status:** Authentication Flow (Signup). The OTP request and resend flows are fully implemented and tested. JWT generation and OTP verification are next.
+> **Status:** Authentication Flow (Signup). The complete signup, OTP verification, and secure JWT session generation flow is fully implemented and tested.
 
 ---
 
 ## Features
 
-- **Authentication:** Signup flow with secure 6-digit OTPs sent via Brevo.
+- **Authentication:** Secure signup flow with OTPs, JWT Access/Refresh tokens, and multi-device session tracking.
 - **Background Jobs:** BullMQ + Upstash Redis for asynchronous email delivery.
-- **Defense in Depth:** IP-based rate limiting (Upstash) + Email-based cooldowns (MongoDB).
+- **Defense in Depth:** IP-based rate limiting (Upstash) + Email-based cooldowns + OTP brute-force lockout (max 5 attempts).
 - **Dedicated Worker:** Separate Node.js process for processing background jobs.
 - **API Documentation:** Interactive Swagger UI available at `/api-docs`.
-- **Testing:** Comprehensive unit and integration test suite (Jest + Supertest) with ~94% coverage.
-- **Production Ready:** Winston logging, centralized error handling, helmet, CORS, and graceful shutdowns.
+- **Testing:** Comprehensive unit and integration test suite (Jest + Supertest) with ~96% coverage.
+- **Production Ready:** Winston logging, centralized error handling, strict env validation, helmet, CORS, and graceful shutdowns.
 
 ---
 
@@ -26,8 +26,9 @@ Backend API for the authstack project — an Express + MongoDB service built for
 | Framework     | Express 5                                |
 | Database      | MongoDB (Atlas) via Mongoose             |
 | Queue / Cache | Redis (Upstash) via BullMQ               |
+| Auth          | JWT (jsonwebtoken) + Bcrypt              |
 | Email Service | Brevo (Transactional Email API)          |
-| Validation    | Joi                                      |
+| Validation    | Joi + Validator.js                       |
 | Logging       | Winston + morgan                         |
 | Documentation | Swagger (swagger-jsdoc)                  |
 | Testing       | Jest + Supertest + mongodb-memory-server |
@@ -39,7 +40,7 @@ Backend API for the authstack project — an Express + MongoDB service built for
 
 The project is split into two distinct processes to handle the constraints of serverless hosting:
 
-1. **The API (Vercel):** Handles HTTP requests, validates input, and pushes email tasks to Redis. Returns `200 OK` instantly.
+1. **The API (Vercel):** Handles HTTP requests, validates input, manages JWT sessions, and pushes email tasks to Redis. Returns `200 OK` instantly.
 2. **The Worker (Hostless/Render):** A long-running process that pulls tasks from Redis and sends emails via Brevo.
 
 > **Deep Dive:** For detailed explanations of why we chose this architecture (and our sync vs. async OTP strategy), see the **[Architecture Decision Records (ADRs)](./docs/README.md)** in the `docs/` folder.
@@ -58,7 +59,7 @@ npm install
 
 # 3. Configure environment
 cp .env.example .env
-# Edit .env with your values (MongoDB, Redis, Brevo)
+# Edit .env with your values (MongoDB, Redis, Brevo, JWT Secrets)
 
 # 4. Run the API (Terminal 1)
 npm run dev
@@ -92,6 +93,10 @@ Copy `.env.example` to `.env` and fill in the values:
 | `REDIS_URL`                | **Yes**  | Upstash TCP URL (`rediss://...`) for BullMQ |
 | `UPSTASH_REDIS_REST_URL`   | **Yes**  | Upstash REST URL for Rate Limiting          |
 | `UPSTASH_REDIS_REST_TOKEN` | **Yes**  | Upstash REST Token for Rate Limiting        |
+| `ACCESS_TOKEN_SECRET`      | **Yes**  | Secret for signing short-lived Access JWTs  |
+| `REFRESH_TOKEN_SECRET`     | **Yes**  | Secret for signing long-lived Refresh JWTs  |
+| `ACCESS_TOKEN_TTL`         | No       | Access token lifespan (default `15m`)       |
+| `REFRESH_TOKEN_TTL_DAYS`   | No       | Refresh token lifespan (default `30` days)  |
 
 ---
 
@@ -119,6 +124,12 @@ All business logic routes are versioned under `/api/v1`.
 - **Body:** `{ email }`
 - **Description:** Generates a new OTP and sends it **synchronously** via Brevo to ensure immediate feedback.
 - **Rate Limit:** 1 req/20 sec + Database cooldown.
+
+**`POST /signup/verify-otp`**
+
+- **Body:** `{ email, otp }`
+- **Description:** Verifies the OTP. Marks the user as verified, creates a secure multi-device session, and issues JWTs. Web clients receive an `HttpOnly` cookie; mobile clients receive the refresh token in the JSON body.
+- **Rate Limit:** 10 req/min.
 
 ---
 
@@ -152,7 +163,7 @@ server/
 │   ├── queues/                   # BullMQ queue definitions
 │   ├── routes/                   # Express routers
 │   ├── services/                 # Business logic (Auth, Email)
-│   ├── utils/                    # Helpers (ApiError, OTP generation)
+│   ├── utils/                    # Helpers (ApiError, JWT, OTP, Validators)
 │   ├── validators/               # Joi validation schemas
 │   ├── app.js                    # Express app configuration
 │   └── server.js                 # Local dev entrypoint
@@ -166,7 +177,7 @@ server/
 │   └── validators/
 ├── .env.example
 ├── .node-version
-├── jest.config.mjs
+├── jest.config.js
 ├── jest.setup.js
 ├── vercel.json
 └── package.json
@@ -179,7 +190,7 @@ server/
 ### API (Vercel)
 
 1. Import the repo at [vercel.com/new](https://vercel.com/new).
-2. Add all environment variables (`MONGODB_URI`, `BREVO_*`, `REDIS_URL`, `UPSTASH_*`).
+2. Add all environment variables (`MONGODB_URI`, `BREVO_*`, `REDIS_URL`, `UPSTASH_*`, `ACCESS_TOKEN_SECRET`, `REFRESH_TOKEN_SECRET`).
 3. Deploy. Vercel will automatically use `api/index.js`.
 
 ### Worker (Hostless / Render / Railway)
@@ -189,7 +200,7 @@ Because Vercel functions are ephemeral and cannot maintain persistent TCP connec
 1. Create a new **Background Worker** on your chosen platform.
 2. Connect this same GitHub repository.
 3. Set the **Start Command** to: `node worker/index.js`
-4. Add the same environment variables (especially `REDIS_URL`, `MONGODB_URI`, and `BREVO_*`).
+4. Add the same environment variables (especially `REDIS_URL`, `MONGODB_URI`, `BREVO_*`, and `ACCESS_TOKEN_SECRET`).
 
 ---
 
