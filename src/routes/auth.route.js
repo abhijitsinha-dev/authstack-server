@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import { requestOtp, resendOtp, verifyOtp } from '../controllers/auth.controller.js';
+import { requestOtp, resendOtp, verifyOtp, login } from '../controllers/auth.controller.js';
 import {
   requestOtpSchema,
   resendOtpSchema,
   verifyOtpSchema,
+  loginSchema,
 } from '../validators/auth.validator.js';
 import { validate } from '../middlewares/validate.middleware.js';
 import { rateLimit } from '../middlewares/rateLimit.middleware.js';
@@ -326,5 +327,97 @@ router
     validate(verifyOtpSchema),
     verifyOtp
   );
+
+/**
+ * @swagger
+ * /api/v1/auth/login:
+ *   post:
+ *     summary: Log in to an existing account
+ *     description: Authenticates the user. Returns an Access Token and sets a Refresh Token (HttpOnly cookie for Web, JSON for Mobile).
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: john@example.com
+ *               password:
+ *                 type: string
+ *                 example: Password123!
+ *     responses:
+ *       200:
+ *         description: Successfully logged in
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Logged in successfully.
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     user:
+ *                       type: object
+ *                     accessToken:
+ *                       type: string
+ *       401:
+ *         description: Invalid email or password
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Invalid email or password.
+ *       403:
+ *         description: Email not verified
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Please verify your email before logging in.
+ *       429:
+ *         description: Too many requests (Rate limited)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Too many requests. Please try again later.
+ */
+router.route('/login').post(
+  // Rate limit: 5 requests per minute to prevent brute-force attacks
+  rateLimit({ limit: isProduction ? 5 : 100, window: '1 m', prefix: 'ratelimit:login' }),
+  validate(loginSchema),
+  login
+);
 
 export default router;

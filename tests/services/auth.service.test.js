@@ -69,7 +69,7 @@ const { default: Session } = await import('../../src/models/session.model.js');
 const { default: bcrypt } = await import('bcryptjs');
 const { emailQueue } = await import('../../src/queues/email.queue.js');
 const { sendSignupOtpEmail } = await import('../../src/services/email.service.js');
-const { requestSignupOtp, resendSignupOtp, verifySignupOtp } =
+const { requestSignupOtp, resendSignupOtp, verifySignupOtp, loginUser } =
   await import('../../src/services/auth.service.js');
 
 // ─────────────────────────────────────────────
@@ -254,6 +254,52 @@ describe('auth.service', () => {
 
       expect(result.accessToken).toBe('fake-access-token');
       expect(result.refreshToken).toBe('fake-refresh-token');
+    });
+  });
+
+  describe('loginUser', () => {
+    const payload = {
+      email: 'john@example.com',
+      password: 'Password123!',
+      ip: '127.0.0.1',
+      userAgent: 'test',
+    };
+
+    it('should throw 401 if user does not exist', async () => {
+      // Mock the chain: User.findOne().select()
+      User.findOne.mockReturnValue({ select: jest.fn().mockResolvedValue(null) });
+      await expect(loginUser(payload)).rejects.toThrow('Invalid email or password.');
+    });
+
+    it('should throw 403 if user is not verified', async () => {
+      User.findOne.mockReturnValue({ select: jest.fn().mockResolvedValue({ isVerified: false }) });
+      await expect(loginUser(payload)).rejects.toThrow(
+        'Please verify your email before logging in.'
+      );
+    });
+
+    it('should throw 401 if password is incorrect', async () => {
+      User.findOne.mockReturnValue({
+        select: jest.fn().mockResolvedValue({ isVerified: true, password: 'hash' }),
+      });
+      bcrypt.compare.mockResolvedValue(false);
+      await expect(loginUser(payload)).rejects.toThrow('Invalid email or password.');
+    });
+
+    it('should create a session and return tokens on success', async () => {
+      const mockUser = { _id: 'u1', isVerified: true, password: 'hash' };
+      User.findOne.mockReturnValue({ select: jest.fn().mockResolvedValue(mockUser) });
+      bcrypt.compare.mockResolvedValue(true);
+      Session.create.mockResolvedValue({});
+
+      const result = await loginUser(payload);
+
+      expect(Session.create).toHaveBeenCalledWith(
+        expect.objectContaining({ user: 'u1', refreshTokenHash: 'fake-hash' })
+      );
+      expect(result.accessToken).toBe('fake-access-token');
+      expect(result.refreshToken).toBe('fake-refresh-token');
+      expect(result.user.password).toBeUndefined(); // Ensure password is deleted
     });
   });
 });

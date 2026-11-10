@@ -203,3 +203,42 @@ describe('POST /api/v1/auth/signup/verify-otp', () => {
     expect(response.headers['set-cookie']).toBeUndefined(); // Should NOT have a cookie
   });
 });
+
+describe('POST /api/v1/auth/login', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should return 200, set a cookie, and return accessToken for valid credentials', async () => {
+    // Mock the chained Mongoose query
+    jest.spyOn(User, 'findOne').mockReturnValue({
+      select: jest.fn().mockResolvedValue({ _id: 'u1', isVerified: true, password: 'hashed' }),
+    });
+    jest.spyOn(bcrypt, 'compare').mockResolvedValue(true);
+    jest.spyOn(Session, 'create').mockResolvedValue({});
+
+    const response = await request(app).post('/api/v1/auth/login').send({
+      email: 'john@example.com',
+      password: 'Password123!',
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.accessToken).toBeDefined();
+    expect(response.body.data.refreshToken).toBeUndefined(); // Web flow
+    expect(response.headers['set-cookie']).toBeDefined();
+  });
+
+  it('should return 401 for invalid credentials', async () => {
+    jest.spyOn(User, 'findOne').mockReturnValue({
+      select: jest.fn().mockResolvedValue(null),
+    });
+
+    const response = await request(app).post('/api/v1/auth/login').send({
+      email: 'john@example.com',
+      password: 'WrongPassword!',
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.body.message).toBe('Invalid email or password.');
+  });
+});

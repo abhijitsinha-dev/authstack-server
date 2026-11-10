@@ -2,6 +2,7 @@ import {
   requestOtpSchema,
   resendOtpSchema,
   verifyOtpSchema,
+  loginSchema,
 } from '../../src/validators/auth.validator.js';
 
 // Helper: replicate the EXACT options your middleware uses
@@ -187,6 +188,33 @@ describe('auth.validator', () => {
       });
       expect(error).toBeUndefined();
       expect(value.isAdmin).toBeUndefined();
+    });
+  });
+
+  describe('loginSchema', () => {
+    const validPayload = { email: 'john@example.com', password: 'Password123!' };
+
+    it('should accept a valid payload', () => {
+      const { error } = validate(loginSchema, validPayload);
+      expect(error).toBeUndefined();
+    });
+
+    it('should reject a missing email', () => {
+      const { error } = validate(loginSchema, { ...validPayload, email: undefined });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('email');
+    });
+
+    it('should reject an invalid email format', () => {
+      const { error } = validate(loginSchema, { ...validPayload, email: 'not-an-email' });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('email');
+    });
+
+    it('should reject a missing password', () => {
+      const { error } = validate(loginSchema, { ...validPayload, password: undefined });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('password');
     });
   });
 });

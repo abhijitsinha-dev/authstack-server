@@ -33,3 +33,8 @@ export const verifyOtpSchema = Joi.object({
     'string.pattern.base': 'OTP must contain only numbers',
   }),
 });
+
+export const loginSchema = Joi.object({
+  email: Joi.string().email().lowercase().trim().required(),
+  password: Joi.string().required(),
+});

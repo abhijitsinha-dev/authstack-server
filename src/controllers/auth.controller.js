@@ -1,4 +1,10 @@
-import { requestSignupOtp, resendSignupOtp, verifySignupOtp } from '../services/auth.service.js';
+import {
+  requestSignupOtp,
+  resendSignupOtp,
+  verifySignupOtp,
+  loginUser,
+} from '../services/auth.service.js';
+import { sendAuthResponse } from '../utils/authResponse.js';
 
 export const requestOtp = async (req, res) => {
   const { name, email, password } = req.body;
@@ -28,41 +34,24 @@ export const resendOtp = async (req, res) => {
 
 export const verifyOtp = async (req, res) => {
   const { email, otp } = req.body;
-  const ip = req.ip;
-  const userAgent = req.headers['user-agent'];
-
   const { user, accessToken, refreshToken } = await verifySignupOtp({
     email,
     otp,
-    ip,
-    userAgent,
+    ip: req.ip,
+    userAgent: req.headers['user-agent'],
   });
 
-  // Basic mobile detection (React Native clients send a specific UA or custom header)
-  const isMobile = userAgent && /mobile|android|iphone/i.test(userAgent);
+  sendAuthResponse(req, res, user, accessToken, refreshToken, 'Account verified successfully.');
+};
 
-  const userResponse = { id: user._id, name: user.name, email: user.email, role: user.role };
-
-  if (isMobile) {
-    // Mobile: Return both tokens in JSON (to be saved in SecureStore)
-    return res.status(200).json({
-      success: true,
-      message: 'Account verified successfully.',
-      data: { user: userResponse, accessToken, refreshToken },
-    });
-  }
-
-  // Web: Return access token in JSON, set refresh token as HttpOnly cookie
-  res.cookie('refreshToken', refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: (Number(process.env.REFRESH_TOKEN_TTL_DAYS) || 30) * 24 * 60 * 60 * 1000,
+export const login = async (req, res) => {
+  const { email, password } = req.body;
+  const { user, accessToken, refreshToken } = await loginUser({
+    email,
+    password,
+    ip: req.ip,
+    userAgent: req.headers['user-agent'],
   });
 
-  res.status(200).json({
-    success: true,
-    message: 'Account verified successfully.',
-    data: { user: userResponse, accessToken },
-  });
+  sendAuthResponse(req, res, user, accessToken, refreshToken, 'Logged in successfully.');
 };

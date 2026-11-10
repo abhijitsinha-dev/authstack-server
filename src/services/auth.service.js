@@ -146,3 +146,49 @@ export const verifySignupOtp = async ({ email, otp, ip, userAgent }) => {
 
   return { user, accessToken, refreshToken };
 };
+
+export const loginUser = async ({ email, password, ip, userAgent }) => {
+  // 1. Find user and explicitly select the password field
+  const user = await User.findOne({ email }).select('+password');
+
+  // 2. Check if user exists (Use generic "Invalid credentials" to prevent user enumeration)
+  if (!user) {
+    throw new ApiError(401, 'Invalid email or password.');
+  }
+
+  // 3. Check if user is verified
+  if (!user.isVerified) {
+    throw new ApiError(403, 'Please verify your email before logging in.');
+  }
+
+  // 4. Compare passwords
+  const isMatch = await bcrypt.compare(password, user.password);
+  if (!isMatch) {
+    throw new ApiError(401, 'Invalid email or password.');
+  }
+
+  // 5. Generate Session ID and Tokens
+  const sessionId = new mongoose.Types.ObjectId();
+  const accessToken = generateAccessToken(user._id, sessionId);
+  const refreshToken = generateRefreshToken(user._id, sessionId);
+
+  // 6. Hash the refresh token and save the Session
+  const refreshTokenHash = hashToken(refreshToken);
+  const expiresAt = new Date(
+    Date.now() + (Number(process.env.REFRESH_TOKEN_TTL_DAYS) || 30) * 864e5
+  );
+
+  await Session.create({
+    _id: sessionId,
+    user: user._id,
+    refreshTokenHash,
+    ip,
+    userAgent,
+    expiresAt,
+  });
+
+  // Remove password from the returned user object for safety
+  user.password = undefined;
+
+  return { user, accessToken, refreshToken };
+};

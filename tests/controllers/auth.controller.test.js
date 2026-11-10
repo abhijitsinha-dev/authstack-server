@@ -1,16 +1,17 @@
 import { jest } from '@jest/globals';
 
-// 1. Mock the service layer (including the new verifySignupOtp)
+// 1. Mock the service layer (including the new loginUser)
 jest.unstable_mockModule('../../src/services/auth.service.js', () => ({
   requestSignupOtp: jest.fn(),
   resendSignupOtp: jest.fn(),
   verifySignupOtp: jest.fn(),
+  loginUser: jest.fn(),
 }));
 
 // 2. Dynamic imports
-const { requestSignupOtp, resendSignupOtp, verifySignupOtp } =
+const { requestSignupOtp, resendSignupOtp, verifySignupOtp, loginUser } =
   await import('../../src/services/auth.service.js');
-const { requestOtp, resendOtp, verifyOtp } =
+const { requestOtp, resendOtp, verifyOtp, login } =
   await import('../../src/controllers/auth.controller.js');
 
 describe('auth.controller', () => {
@@ -31,7 +32,7 @@ describe('auth.controller', () => {
     res = {
       status: jest.fn().mockReturnThis(),
       json: jest.fn(),
-      cookie: jest.fn(), // 👈 Added for verifyOtp
+      cookie: jest.fn(),
     };
   });
 
@@ -165,6 +166,82 @@ describe('auth.controller', () => {
       verifySignupOtp.mockRejectedValue(new Error('Invalid OTP'));
 
       await expect(verifyOtp(req, res)).rejects.toThrow('Invalid OTP');
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.cookie).not.toHaveBeenCalled();
+    });
+  });
+
+  // 👇 NEW TESTS FOR LOGIN
+  describe('login', () => {
+    const mockUser = { _id: 'u1', name: 'John', email: 'test@example.com', role: 'user' };
+    const mockTokens = { accessToken: 'fake-access', refreshToken: 'fake-refresh' };
+
+    beforeEach(() => {
+      req.body = { email: 'test@example.com', password: 'Password123!' };
+      loginUser.mockResolvedValue({ user: mockUser, ...mockTokens });
+    });
+
+    it('should set HttpOnly cookie and NOT return refreshToken in JSON for Web', async () => {
+      req.headers['user-agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';
+
+      await login(req, res);
+
+      // Verify service call
+      expect(loginUser).toHaveBeenCalledWith({
+        email: 'test@example.com',
+        password: 'Password123!',
+        ip: '127.0.0.1',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      });
+
+      // Verify Cookie was set
+      expect(res.cookie).toHaveBeenCalledWith(
+        'refreshToken',
+        'fake-refresh',
+        expect.objectContaining({ httpOnly: true })
+      );
+
+      // Verify JSON response (should NOT have refreshToken)
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        message: 'Logged in successfully.',
+        data: {
+          user: { id: 'u1', name: 'John', email: 'test@example.com', role: 'user' },
+          accessToken: 'fake-access',
+        },
+      });
+
+      const jsonResponse = res.json.mock.calls[0][0];
+      expect(jsonResponse.data.refreshToken).toBeUndefined();
+    });
+
+    it('should return BOTH tokens in JSON and NOT set a cookie for Mobile', async () => {
+      req.headers['user-agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)';
+
+      await login(req, res);
+
+      // Verify Cookie was NOT set
+      expect(res.cookie).not.toHaveBeenCalled();
+
+      // Verify JSON response (should HAVE refreshToken)
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        message: 'Logged in successfully.',
+        data: {
+          user: { id: 'u1', name: 'John', email: 'test@example.com', role: 'user' },
+          accessToken: 'fake-access',
+          refreshToken: 'fake-refresh',
+        },
+      });
+    });
+
+    it('should throw an error if the service fails (e.g., invalid credentials)', async () => {
+      req.headers['user-agent'] = 'Mozilla/5.0';
+      loginUser.mockRejectedValue(new Error('Invalid email or password.'));
+
+      await expect(login(req, res)).rejects.toThrow('Invalid email or password.');
       expect(res.status).not.toHaveBeenCalled();
       expect(res.cookie).not.toHaveBeenCalled();
     });
