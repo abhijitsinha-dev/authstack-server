@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requestOtp, resendOtp, verifyOtp, login } from '../controllers/auth.controller.js';
+import { requestOtp, resendOtp, verifyOtp, login, logout } from '../controllers/auth.controller.js';
 import {
   requestOtpSchema,
   resendOtpSchema,
@@ -8,6 +8,7 @@ import {
 } from '../validators/auth.validator.js';
 import { validate } from '../middlewares/validate.middleware.js';
 import { rateLimit } from '../middlewares/rateLimit.middleware.js';
+import { protect } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 const isProduction = process.env.NODE_ENV === 'production';
@@ -419,5 +420,49 @@ router.route('/login').post(
   validate(loginSchema),
   login
 );
+
+/**
+ * @swagger
+ * /api/v1/auth/logout:
+ *   post:
+ *     summary: Log out of the current device
+ *     description: Revokes the current session in the database and clears the refresh token cookie.
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: [] # 👈 Requires Access Token
+ *     responses:
+ *       200:
+ *         description: Successfully logged out
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Logged out successfully.
+ *       401:
+ *         description: Unauthorized (Invalid, missing, or revoked token)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   description: |
+ *                     The specific reason for the unauthorized error. Possible values:
+ *                     - "Not authorized, no token provided"
+ *                     - "Not authorized, token failed or expired"
+ *                     - "Session has been revoked or expired"
+ *                   example: Not authorized, no token provided
+ */
+router.route('/logout').post(protect, logout);
 
 export default router;

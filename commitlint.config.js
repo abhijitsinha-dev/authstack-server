@@ -74,6 +74,17 @@ export default {
             'subject must be lowercase (except for filenames like README.md or App.tsx)',
           ];
         },
+        'body-lowercase-files-exception': ({ body }) => {
+          if (!body) return [true]; // Body is optional
+          const bodyWithoutFiles = body
+            .replace(/\b[\w-]+\.[a-zA-Z0-9]+\b/g, '')
+            .replace(/\.[a-zA-Z0-9]+\b/g, '');
+          const hasUppercase = /[A-Z]/.test(bodyWithoutFiles);
+          return [
+            !hasUppercase,
+            'body must be lowercase (except for filenames like README.md or App.tsx)',
+          ];
+        },
       },
     },
   ],
@@ -92,6 +103,7 @@ export default {
 
     // 👇 Enforce our new lowercase rule as an ERROR
     'subject-lowercase-files-exception': [2, 'always'],
+    'body-lowercase-files-exception': [2, 'always'],
 
     // --- WARNINGS (Recommended Rules) ---
     'scope-empty': [1, 'never'],

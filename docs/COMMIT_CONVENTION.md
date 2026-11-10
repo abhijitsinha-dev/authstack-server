@@ -27,7 +27,7 @@ type(scope): [emoji] message header
 
 ### Header
 
-- **Lowercase letters** (uppercase allowed only for filenames that are uppercase, e.g., `App.tsx`, `README.md`)
+- **Lowercase letters** (uppercase allowed only for filenames that are uppercase, e.g., `authResponse.js`, `README.md`)
 - **No full stop at the end**
 - **Maximum 50 characters**
 - **Emoji recommended** (omitting an emoji triggers a warning, not an error)

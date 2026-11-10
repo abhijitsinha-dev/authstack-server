@@ -192,3 +192,14 @@ export const loginUser = async ({ email, password, ip, userAgent }) => {
 
   return { user, accessToken, refreshToken };
 };
+
+export const logoutUser = async (sessionId) => {
+  // Mark the session as revoked in the database
+  const session = await Session.findByIdAndUpdate(sessionId, { isRevoked: true }, { new: true });
+
+  if (!session) {
+    throw new ApiError(404, 'Session not found or already logged out.');
+  }
+
+  return session;
+};

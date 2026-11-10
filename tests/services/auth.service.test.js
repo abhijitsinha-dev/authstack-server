@@ -25,6 +25,7 @@ jest.unstable_mockModule('../../src/models/otp.model.js', () => ({
 jest.unstable_mockModule('../../src/models/session.model.js', () => ({
   default: {
     create: jest.fn(),
+    findByIdAndUpdate: jest.fn(), // 👈 Added this line
   },
 }));
 
@@ -69,7 +70,7 @@ const { default: Session } = await import('../../src/models/session.model.js');
 const { default: bcrypt } = await import('bcryptjs');
 const { emailQueue } = await import('../../src/queues/email.queue.js');
 const { sendSignupOtpEmail } = await import('../../src/services/email.service.js');
-const { requestSignupOtp, resendSignupOtp, verifySignupOtp, loginUser } =
+const { requestSignupOtp, resendSignupOtp, verifySignupOtp, loginUser, logoutUser } =
   await import('../../src/services/auth.service.js');
 
 // ─────────────────────────────────────────────
@@ -300,6 +301,38 @@ describe('auth.service', () => {
       expect(result.accessToken).toBe('fake-access-token');
       expect(result.refreshToken).toBe('fake-refresh-token');
       expect(result.user.password).toBeUndefined(); // Ensure password is deleted
+    });
+  });
+
+  // 👇 MOVED INSIDE THE MAIN DESCRIBE BLOCK
+  describe('logoutUser', () => {
+    const sessionId = 's1';
+
+    it('should revoke the session and return the updated document', async () => {
+      // Mock the database update
+      const mockUpdatedSession = { _id: 's1', isRevoked: true };
+      Session.findByIdAndUpdate.mockResolvedValue(mockUpdatedSession);
+
+      const result = await logoutUser(sessionId);
+
+      // Verify the correct DB query was made
+      expect(Session.findByIdAndUpdate).toHaveBeenCalledWith(
+        sessionId,
+        { isRevoked: true },
+        { new: true }
+      );
+
+      // Verify the result is returned
+      expect(result).toEqual(mockUpdatedSession);
+    });
+
+    it('should throw 404 if the session is already deleted or does not exist', async () => {
+      // Mock the database returning null (session not found)
+      Session.findByIdAndUpdate.mockResolvedValue(null);
+
+      await expect(logoutUser(sessionId)).rejects.toThrow(
+        'Session not found or already logged out.'
+      );
     });
   });
 });

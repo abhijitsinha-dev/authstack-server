@@ -3,6 +3,7 @@ import {
   resendSignupOtp,
   verifySignupOtp,
   loginUser,
+  logoutUser,
 } from '../services/auth.service.js';
 import { sendAuthResponse } from '../utils/authResponse.js';
 
@@ -54,4 +55,22 @@ export const login = async (req, res) => {
   });
 
   sendAuthResponse(req, res, user, accessToken, refreshToken, 'Logged in successfully.');
+};
+
+export const logout = async (req, res) => {
+  // Revoke the session in the database
+  await logoutUser(req.user.sessionId);
+
+  // Clear the HttpOnly cookie (for Web clients)
+  res.clearCookie('refreshToken', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+  });
+
+  // For Mobile clients, they will just delete the token from SecureStore on their end
+  res.status(200).json({
+    success: true,
+    message: 'Logged out successfully.',
+  });
 };

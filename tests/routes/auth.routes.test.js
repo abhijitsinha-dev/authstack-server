@@ -34,6 +34,7 @@ const { default: User } = await import('../../src/models/user.model.js');
 const { default: Otp } = await import('../../src/models/otp.model.js');
 const { default: Session } = await import('../../src/models/session.model.js');
 const { default: bcrypt } = await import('bcryptjs');
+const { default: jwt } = await import('jsonwebtoken');
 const { emailQueue } = await import('../../src/queues/email.queue.js');
 
 // ─────────────────────────────────────────────
@@ -240,5 +241,26 @@ describe('POST /api/v1/auth/login', () => {
 
     expect(response.status).toBe(401);
     expect(response.body.message).toBe('Invalid email or password.');
+  });
+});
+
+describe('POST /api/v1/auth/logout', () => {
+  it('should clear cookie and return 200 for a valid session', async () => {
+    // Mock the token verification and session check
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
+    jest.spyOn(Session, 'findByIdAndUpdate').mockResolvedValue({ _id: 's1' });
+
+    const response = await request(app)
+      .post('/api/v1/auth/logout')
+      .set('Authorization', 'Bearer fake-token');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['set-cookie'][0]).toContain('refreshToken=;'); // Cookie cleared
+  });
+
+  it('should return 401 without a valid token', async () => {
+    const response = await request(app).post('/api/v1/auth/logout');
+    expect(response.status).toBe(401);
   });
 });
