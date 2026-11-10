@@ -1,0 +1,125 @@
+paths:
+  /api/v1/auth/signup/request-otp:
+    post:
+      summary: Request an OTP for signup
+      description: Creates an unverified user, generates a 6-digit OTP, and sends it via email.
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string, example: John Doe }
+                email: { type: string, format: email, example: john@example.com }
+                password: { type: string, format: password, example: Password123! }
+      responses:
+        '200':
+          description: OTP sent successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/auth/signup/resend-otp:
+    post:
+      summary: Resend signup OTP
+      description: Generates a new OTP and sends it to the user's email. Enforces a 20-second cooldown.
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, example: john@example.com }
+      responses:
+        '200':
+          description: New OTP sent successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/EmailCooldown'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/auth/signup/verify-otp:
+    post:
+      summary: Verify OTP and complete signup
+      description: Verifies the 6-digit OTP. Marks the user as verified, creates a session, and issues JWT tokens.
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, otp]
+              properties:
+                email: { type: string, format: email, example: john@example.com }
+                otp: { type: string, example: '123456' }
+      responses:
+        '200':
+          description: Successfully verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSuccessResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/OTPLockout'
+
+  /api/v1/auth/login:
+    post:
+      summary: Log in to an existing account
+      description: Authenticates the user. Returns an Access Token and sets a Refresh Token.
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email, example: john@example.com }
+                password: { type: string, example: Password123! }
+      responses:
+        '200':
+          description: Successfully logged in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/EmailNotVerified'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /api/v1/auth/logout:
+    post:
+      summary: Log out of the current device
+      description: Revokes the current session in the database and clears the refresh token cookie.
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Successfully logged out
+        '401':
+          $ref: '#/components/responses/Unauthorized'

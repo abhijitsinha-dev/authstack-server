@@ -2,17 +2,18 @@
 
 Backend API for the authstack project — an Express + MongoDB service built for serverless deployment on Vercel, with a dedicated BullMQ worker for background processing.
 
-> **Status:** Authentication Flow (Signup). The complete signup, OTP verification, and secure JWT session generation flow is fully implemented and tested.
+> **Status:** Authentication Flow (Signup, Login, Logout). The core authentication, secure JWT session management, and modular API documentation are fully implemented and tested.
 
 ---
 
 ## Features
 
-- **Authentication:** Secure signup flow with OTPs, JWT Access/Refresh tokens, and multi-device session tracking.
+- **Authentication:** Secure signup (OTP), login, and logout flows with JWT Access/Refresh tokens.
+- **Multi-Device Sessions:** Tracks active sessions with device info and supports session revocation.
 - **Background Jobs:** BullMQ + Upstash Redis for asynchronous email delivery.
-- **Defense in Depth:** IP-based rate limiting (Upstash) + Email-based cooldowns + OTP brute-force lockout (max 5 attempts).
+- **Defense in Depth:** IP-based rate limiting (Upstash), email cooldowns, and OTP brute-force lockout (max 5 attempts).
 - **Dedicated Worker:** Separate Node.js process for processing background jobs.
-- **API Documentation:** Interactive Swagger UI available at `/api-docs`.
+- **API Documentation:** Modular OpenAPI 3.0 YAML specs served via Swagger UI at `/api-docs`.
 - **Testing:** Comprehensive unit and integration test suite (Jest + Supertest) with ~96% coverage.
 - **Production Ready:** Winston logging, centralized error handling, strict env validation, helmet, CORS, and graceful shutdowns.
 
@@ -30,7 +31,7 @@ Backend API for the authstack project — an Express + MongoDB service built for
 | Email Service | Brevo (Transactional Email API)          |
 | Validation    | Joi + Validator.js                       |
 | Logging       | Winston + morgan                         |
-| Documentation | Swagger (swagger-jsdoc)                  |
+| Documentation | Swagger (swagger-jsdoc + YAML)           |
 | Testing       | Jest + Supertest + mongodb-memory-server |
 | Deployment    | Vercel (API) + Hostless/Render (Worker)  |
 
@@ -131,6 +132,35 @@ All business logic routes are versioned under `/api/v1`.
 - **Description:** Verifies the OTP. Marks the user as verified, creates a secure multi-device session, and issues JWTs. Web clients receive an `HttpOnly` cookie; mobile clients receive the refresh token in the JSON body.
 - **Rate Limit:** 10 req/min.
 
+**`POST /login`**
+
+- **Body:** `{ email, password }`
+- **Description:** Authenticates the user. Returns an Access Token and sets a Refresh Token (HttpOnly cookie for Web, JSON for Mobile).
+- **Rate Limit:** 5 req/min.
+
+**`POST /logout`**
+
+- **Requires:** Bearer Token (Protected Route)
+- **Description:** Revokes the current session in the database and clears the refresh token cookie.
+
+---
+
+## API Documentation Notes
+
+Swagger is powered by **`swagger-jsdoc`**. To keep our Express route files clean, we do **not** write massive JSDoc blocks inside our `.js` files.
+
+Instead, we use a **modular YAML approach**:
+
+- Base configuration (info, servers, security) lives in `src/config/swagger.js`
+- All paths, schemas, and responses live in the `docs/api/` folder
+- Files are grouped by domain (e.g., `docs/api/auth/`, `docs/api/system/`)
+
+To add a new endpoint:
+
+1. Write the Express route in `src/routes/`
+2. Add the route definition to the corresponding `.paths.yaml` file in `docs/api/`
+3. Run `npm run dev` — the spec is rebuilt in memory at startup.
+
 ---
 
 ## Available Scripts
@@ -154,14 +184,21 @@ server/
 │   └── index.js                  # Vercel serverless entrypoint
 ├── worker/
 │   └── index.js                  # BullMQ worker entrypoint (Hostless)
-├── docs/                         # Architecture Decision Records (ADRs)
+├── docs/
+│   ├── api/                      # Modular OpenAPI 3.0 YAML specs
+│   │   ├── components/           # Reusable schemas & responses
+│   │   ├── auth/                 # Auth paths, schemas, responses
+│   │   └── system/               # Health & root paths
+│   ├── decisions/                # Architecture Decision Records (ADRs)
+│   ├── README.md                 # Docs hub
+│   └── COMMIT_CONVENTION.md      # Git conventions
 ├── src/
 │   ├── config/                   # DB, Logger, Rate Limiter, Swagger
 │   ├── controllers/              # Route handlers
 │   ├── middlewares/              # Auth, Validation, Error, Rate Limiting
 │   ├── models/                   # Mongoose schemas (User, Otp, Session)
 │   ├── queues/                   # BullMQ queue definitions
-│   ├── routes/                   # Express routers
+│   ├── routes/                   # Express routers (code-only, no JSDoc)
 │   ├── services/                 # Business logic (Auth, Email)
 │   ├── utils/                    # Helpers (ApiError, JWT, OTP, Validators)
 │   ├── validators/               # Joi validation schemas

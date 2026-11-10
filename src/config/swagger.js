@@ -1,12 +1,5 @@
 import swaggerJsdoc from 'swagger-jsdoc';
 
-// ---------------------------------------------------------------------------
-// Build the OpenAPI spec at startup (in memory).
-//
-// NOTE: use a relative, forward-slash pattern. swagger-jsdoc resolves it
-// against process.cwd(), which is the project root both locally and on
-// Vercel. Absolute Windows paths with backslashes do NOT work with glob.
-// ---------------------------------------------------------------------------
 const options = {
   definition: {
     openapi: '3.0.0',
@@ -16,14 +9,12 @@ const options = {
       description: 'Backend API for the authstack project — Express + MongoDB on Vercel.',
     },
     servers: [
-      {
-        url: 'http://localhost:5000',
-        description: 'Local Development Server',
-      },
-      {
-        url: 'https://authstack-backend.vercel.app',
-        description: 'Production Server',
-      },
+      { url: 'http://localhost:5000', description: 'Local Development Server' },
+      { url: 'https://authstack-backend.vercel.app', description: 'Production Server' },
+    ],
+    tags: [
+      { name: 'System', description: 'Health and readiness probes' },
+      { name: 'Auth', description: 'Authentication endpoints' },
     ],
     components: {
       securitySchemes: {
@@ -34,9 +25,8 @@ const options = {
         },
       },
     },
-    tags: [{ name: 'System', description: 'Health and readiness probes' }],
   },
-  apis: ['./src/routes/*.route.js'],
+  apis: ['./docs/api/**/*.yaml'],
 };
 
 export const swaggerSpec = swaggerJsdoc(options);

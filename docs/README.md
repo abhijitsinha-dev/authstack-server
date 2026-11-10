@@ -15,13 +15,18 @@ The main [README](../README.md) at the root of the repository covers how to run 
 We use ADRs to document significant technical decisions, their context, and their trade-offs.
 
 - **[ADR-001: Separating the API and Background Worker](./decisions/ADR-001-worker-separation.md)**
-  _Why we run the Vercel API and the BullMQ Worker on separate hosting platforms._
 - **[ADR-002: Async vs. Sync OTP Delivery](./decisions/ADR-002-sync-vs-async-otp.md)**
-  _Why the initial OTP request is queued, but the resend OTP request is synchronous._
 - **[ADR-003: Defense-in-Depth Rate Limiting](./decisions/ADR-003-defense-in-depth-rate-limiting.md)**
-  _Why we use both Upstash (IP-based) and MongoDB (Email-based) rate limits._
 - **[ADR-004: JWT Token Strategy & Session Management](./decisions/ADR-004-token-strategy.md)**
-  _Why we use SHA-256 for refresh tokens but Bcrypt for OTPs, and how we handle Web vs. Mobile clients._
+- **[ADR-005: Modular YAML API Documentation](./decisions/ADR-005-modular-swagger.md)** _(New)_
+
+### API Specifications
+
+We use a domain-driven OpenAPI 3.0 YAML structure to document our API.
+
+- **[API Directory](./api/)** — The root folder for all OpenAPI YAML files.
+- **[Auth Routes](./api/auth/auth.paths.yaml)** — Authentication endpoints.
+- **[System Routes](./api/system/system.paths.yaml)** — Health and root probes.
 
 ### Development Standards
 

@@ -1,0 +1,38 @@
+components:
+  responses:
+    EmailCooldown:
+      description: Rate limit exceeded (20-second email cooldown)
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success: { type: boolean, example: false }
+              message:
+                type: string
+                description: "Possible values:\n- 'Too many requests.' (IP limit)\n- 'Please wait X seconds.' (Email cooldown)"
+                example: 'Please wait 15 seconds before requesting a new code.'
+
+    OTPLockout:
+      description: Maximum verification attempts exceeded
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success: { type: boolean, example: false }
+              message:
+                {
+                  type: string,
+                  example: 'Maximum verification attempts exceeded. Please request a new OTP.',
+                }
+
+    EmailNotVerified:
+      description: Email not verified
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success: { type: boolean, example: false }
+              message: { type: string, example: 'Please verify your email before logging in.' }
