@@ -6,33 +6,56 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 'Validation error'
+
     Unauthorized:
       description: Unauthorized (Invalid or missing token)
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 'Not authorized, no token provided'
+
     NotFound:
       description: Resource not found
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 'Resource not found'
+
     Conflict:
       description: Resource already exists
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 'Resource already exists'
+
     TooManyRequests:
       description: Too many requests (Rate limited)
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 'Too many requests. Please try again later.'
+
     InternalServerError:
       description: Internal server error
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 'Internal server error'

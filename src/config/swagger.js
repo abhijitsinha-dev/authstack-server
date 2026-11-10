@@ -1,8 +1,9 @@
 import swaggerJsdoc from 'swagger-jsdoc';
+import path from 'path';
 
 const options = {
   definition: {
-    openapi: '3.0.0',
+    openapi: '3.1.0',
     info: {
       title: 'Authstack API',
       version: '1.0.0',
@@ -26,7 +27,8 @@ const options = {
       },
     },
   },
-  apis: ['./docs/api/**/*.yaml'],
+  // 👇 Use relative paths with forward slashes
+  apis: [path.posix.join(process.cwd(), 'docs/api/**/*.yaml')],
 };
 
 export const swaggerSpec = swaggerJsdoc(options);

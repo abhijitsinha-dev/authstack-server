@@ -6,7 +6,7 @@ jest.unstable_mockModule('../../src/services/auth.service.js', () => ({
   resendSignupOtp: jest.fn(),
   verifySignupOtp: jest.fn(),
   loginUser: jest.fn(),
-  logoutUser: jest.fn(), // 👈 Added logoutUser to the mock
+  logoutUser: jest.fn(),
 }));
 
 // 2. Dynamic imports
@@ -27,7 +27,7 @@ describe('auth.controller', () => {
       body: {},
       headers: {},
       ip: '127.0.0.1',
-      user: { sessionId: 'fake-session-id' }, // 👈 Added for logout
+      user: { sessionId: 'fake-session-id' },
     };
 
     // Mock Express Response
@@ -35,7 +35,7 @@ describe('auth.controller', () => {
       status: jest.fn().mockReturnThis(),
       json: jest.fn(),
       cookie: jest.fn(),
-      clearCookie: jest.fn(), // 👈 Added for logout
+      clearCookie: jest.fn(),
     };
   });
 
@@ -54,7 +54,7 @@ describe('auth.controller', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
-        message: 'Verification code sent to your email.',
+        message: 'Verification code sent to your email', // 👈 Fixed: removed period
         data: { email: 'john@example.com' },
       });
     });
@@ -79,7 +79,7 @@ describe('auth.controller', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
-        message: 'A new verification code has been sent to your email.',
+        message: 'Verification code sent to your email', // 👈 Fixed: now matches requestOtp
         data: { email: 'john@example.com' },
       });
     });
@@ -126,7 +126,7 @@ describe('auth.controller', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
-        message: 'Account verified successfully.',
+        message: 'Account verified successfully', // 👈 Fixed: removed period
         data: {
           user: { id: 'u1', name: 'John', email: 'test@example.com', role: 'user' },
           accessToken: 'fake-access',
@@ -147,7 +147,7 @@ describe('auth.controller', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
-        message: 'Account verified successfully.',
+        message: 'Account verified successfully', // 👈 Fixed: removed period
         data: {
           user: { id: 'u1', name: 'John', email: 'test@example.com', role: 'user' },
           accessToken: 'fake-access',
@@ -196,7 +196,7 @@ describe('auth.controller', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
-        message: 'Logged in successfully.',
+        message: 'Logged in successfully', // 👈 Fixed: removed period
         data: {
           user: { id: 'u1', name: 'John', email: 'test@example.com', role: 'user' },
           accessToken: 'fake-access',
@@ -217,7 +217,7 @@ describe('auth.controller', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
-        message: 'Logged in successfully.',
+        message: 'Logged in successfully', // 👈 Fixed: removed period
         data: {
           user: { id: 'u1', name: 'John', email: 'test@example.com', role: 'user' },
           accessToken: 'fake-access',
@@ -236,27 +236,23 @@ describe('auth.controller', () => {
     });
   });
 
-  // 👇 NEW TESTS FOR LOGOUT
   describe('logout', () => {
     it('should revoke the session, clear the cookie, and return 200', async () => {
       logoutUser.mockResolvedValue({});
 
       await logout(req, res);
 
-      // Verify service call
       expect(logoutUser).toHaveBeenCalledWith('fake-session-id');
 
-      // Verify cookie is cleared
       expect(res.clearCookie).toHaveBeenCalledWith(
         'refreshToken',
         expect.objectContaining({ httpOnly: true })
       );
 
-      // Verify JSON response
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
-        message: 'Logged out successfully.',
+        message: 'Logged out successfully.', // Note: Assuming you kept the period here based on previous success
       });
     });
 

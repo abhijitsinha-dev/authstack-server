@@ -1,5 +1,21 @@
 components:
   schemas:
+    OtpSuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: Verification code sent to your email.
+        data:
+          type: object
+          properties:
+            email:
+              type: string
+              example: john@example.com
+
     AuthSuccessResponse:
       type: object
       properties:
@@ -16,3 +32,13 @@ components:
               $ref: '#/components/schemas/UserResponse'
             accessToken:
               type: string
+
+    LogoutSuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: Logged out successfully.

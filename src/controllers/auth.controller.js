@@ -16,7 +16,7 @@ export const requestOtp = async (req, res) => {
   // Send success response
   res.status(200).json({
     success: true,
-    message: 'Verification code sent to your email.',
+    message: 'Verification code sent to your email',
     data: { email },
   });
 };
@@ -28,7 +28,7 @@ export const resendOtp = async (req, res) => {
 
   res.status(200).json({
     success: true,
-    message: 'A new verification code has been sent to your email.',
+    message: 'Verification code sent to your email',
     data: { email },
   });
 };
@@ -42,7 +42,7 @@ export const verifyOtp = async (req, res) => {
     userAgent: req.headers['user-agent'],
   });
 
-  sendAuthResponse(req, res, user, accessToken, refreshToken, 'Account verified successfully.');
+  sendAuthResponse(req, res, user, accessToken, refreshToken, 'Account verified successfully');
 };
 
 export const login = async (req, res) => {
@@ -54,7 +54,7 @@ export const login = async (req, res) => {
     userAgent: req.headers['user-agent'],
   });
 
-  sendAuthResponse(req, res, user, accessToken, refreshToken, 'Logged in successfully.');
+  sendAuthResponse(req, res, user, accessToken, refreshToken, 'Logged in successfully');
 };
 
 export const logout = async (req, res) => {

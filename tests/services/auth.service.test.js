@@ -25,7 +25,7 @@ jest.unstable_mockModule('../../src/models/otp.model.js', () => ({
 jest.unstable_mockModule('../../src/models/session.model.js', () => ({
   default: {
     create: jest.fn(),
-    findByIdAndUpdate: jest.fn(), // 👈 Added this line
+    findByIdAndUpdate: jest.fn(),
   },
 }));
 
@@ -56,6 +56,11 @@ jest.unstable_mockModule('../../src/utils/jwt.js', () => ({
   hashToken: jest.fn().mockReturnValue('fake-hash'),
 }));
 
+// 👇 Mock isStrongPassword for the login fast-fail logic
+jest.unstable_mockModule('validator/lib/isStrongPassword.js', () => ({
+  default: jest.fn(),
+}));
+
 // Mock the Logger
 jest.unstable_mockModule('../../src/config/logger.js', () => ({
   logger: { info: jest.fn(), error: jest.fn() },
@@ -68,6 +73,7 @@ const { default: User } = await import('../../src/models/user.model.js');
 const { default: Otp } = await import('../../src/models/otp.model.js');
 const { default: Session } = await import('../../src/models/session.model.js');
 const { default: bcrypt } = await import('bcryptjs');
+const { default: isStrongPassword } = await import('validator/lib/isStrongPassword.js');
 const { emailQueue } = await import('../../src/queues/email.queue.js');
 const { sendSignupOtpEmail } = await import('../../src/services/email.service.js');
 const { requestSignupOtp, resendSignupOtp, verifySignupOtp, loginUser, logoutUser } =
@@ -226,7 +232,7 @@ describe('auth.service', () => {
         'Maximum verification attempts exceeded'
       );
 
-      // 👇 FIX: We now SAVE (not delete) to preserve the lockout state
+      // 👇 We now SAVE (not delete) to preserve the lockout state
       expect(mockOtpRecord.attempts).toBe(5);
       expect(mockOtpRecord.save).toHaveBeenCalled();
       expect(Otp.deleteOne).not.toHaveBeenCalled();
@@ -266,6 +272,25 @@ describe('auth.service', () => {
       userAgent: 'test',
     };
 
+    beforeEach(() => {
+      // By default, assume the password is strong so we reach the DB logic
+      isStrongPassword.mockReturnValue(true);
+    });
+
+    // Proves the fast-fail optimization
+    it('should fast-fail with 401 if password is weak, without querying the database', async () => {
+      isStrongPassword.mockReturnValue(false); // Simulate weak password
+      User.findOne.mockClear(); // Clear previous DB calls
+
+      await expect(loginUser({ ...payload, password: 'weak' })).rejects.toThrow(
+        'Invalid email or password.'
+      );
+
+      // Proves we never hit the database or Bcrypt
+      expect(User.findOne).not.toHaveBeenCalled();
+      expect(bcrypt.compare).not.toHaveBeenCalled();
+    });
+
     it('should throw 401 if user does not exist', async () => {
       // Mock the chain: User.findOne().select()
       User.findOne.mockReturnValue({ select: jest.fn().mockResolvedValue(null) });
@@ -304,7 +329,6 @@ describe('auth.service', () => {
     });
   });
 
-  // 👇 MOVED INSIDE THE MAIN DESCRIBE BLOCK
   describe('logoutUser', () => {
     const sessionId = 's1';
 

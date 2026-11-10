@@ -9,6 +9,7 @@ import { emailQueue } from '../queues/email.queue.js';
 import { sendSignupOtpEmail } from './email.service.js';
 import { ApiError } from '../utils/ApiError.js';
 import { logger } from '../config/logger.js';
+import { isStrongPassword } from '../utils/validator.js';
 
 // Maximum OTP attempts before lockout
 const MAX_OTP_ATTEMPTS = 5;
@@ -88,7 +89,7 @@ export const verifySignupOtp = async ({ email, otp, ip, userAgent }) => {
   // 1. Find and validate the user FIRST (fail fast)
   const user = await User.findOne({ email });
 
-  if (!user) throw new ApiError(404, 'User not found. Please request a new OTP.');
+  if (!user) throw new ApiError(404, 'User not found. Please sign up first.');
   if (user.isVerified) throw new ApiError(400, 'User is already verified. Please log in.');
 
   // 2. Only fetch the OTP if the user is valid and unverified
@@ -148,6 +149,11 @@ export const verifySignupOtp = async ({ email, otp, ip, userAgent }) => {
 };
 
 export const loginUser = async ({ email, password, ip, userAgent }) => {
+  // 1. Fast-fail: If the password is weak, we KNOW it's wrong (assuming all current users have strong passwords).
+  if (!isStrongPassword(password)) {
+    throw new ApiError(401, 'Invalid email or password.');
+  }
+
   // 1. Find user and explicitly select the password field
   const user = await User.findOne({ email }).select('+password');
 

@@ -1,38 +1,203 @@
 components:
   responses:
-    EmailCooldown:
-      description: Rate limit exceeded (20-second email cooldown)
+    # ─────────────────────────────────────────────
+    # Request OTP Responses
+    # ─────────────────────────────────────────────
+    RequestOtpBadRequest:
+      description: Validation error
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              success: { type: boolean, example: false }
-              message:
-                type: string
-                description: "Possible values:\n- 'Too many requests.' (IP limit)\n- 'Please wait X seconds.' (Email cooldown)"
-                example: 'Please wait 15 seconds before requesting a new code.'
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            missing_name:
+              summary: Missing Name
+              value: { success: false, message: 'Name is required.' }
+            missing_email:
+              summary: Missing Email
+              value: { success: false, message: 'Email is required.' }
+            missing_password:
+              summary: Missing Password
+              value: { success: false, message: 'Password is required.' }
+            invalid_email:
+              summary: Invalid Email Format
+              value: { success: false, message: 'Please provide a valid email address.' }
+            weak_password:
+              summary: Weak Password
+              value:
+                {
+                  success: false,
+                  message: 'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.',
+                }
+
+    RequestOtpConflict:
+      description: Email already exists and is verified
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            { success: false, message: 'An account with this email already exists. Please log in.' }
+
+    # ─────────────────────────────────────────────
+    # Resend OTP Responses
+    # ─────────────────────────────────────────────
+    ResendOtpBadRequest:
+      description: User is already verified or invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            already_verified:
+              summary: Account Already Verified
+              value: { success: false, message: 'Account is already verified. Please log in.' }
+            invalid_email:
+              summary: Invalid Email Format
+              value: { success: false, message: 'Please provide a valid email address.' }
+
+    ResendOtpNotFound:
+      description: User not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example: { success: false, message: 'User not found. Please sign up first.' }
+
+    # ─────────────────────────────────────────────
+    # Verify OTP Responses
+    # ─────────────────────────────────────────────
+    VerifyOtpSuccess:
+      description: Successfully verified
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuthSuccessResponse'
+          example:
+            success: true
+            message: 'Account verified successfully.'
+            data:
+              user:
+                id: '60d5ecb8b392d7001f3f4e1a'
+                name: 'John Doe'
+                email: 'john@example.com'
+                role: 'user'
+              accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+
+    VerifyOtpBadRequest:
+      description: Invalid OTP or user already verified
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            invalid_otp:
+              summary: Invalid OTP Code
+              value: { success: false, message: 'Invalid OTP code. You have 4 attempts remaining.' }
+            expired_otp:
+              summary: Expired or Missing OTP
+              value:
+                {
+                  success: false,
+                  message: 'OTP has expired or does not exist. Please request a new one.',
+                }
+            already_verified:
+              summary: User Already Verified
+              value: { success: false, message: 'User is already verified. Please log in.' }
+            invalid_email:
+              summary: Invalid Email Format
+              value: { success: false, message: 'Please provide a valid email address.' }
+            invalid_otp_format:
+              summary: Invalid OTP Format
+              value: { success: false, message: 'OTP must be exactly 6 digits.' }
+
+    VerifyOtpNotFound:
+      description: User not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example: { success: false, message: 'User not found. Please sign up first.' }
+
+    # ─────────────────────────────────────────────
+    # Login Responses
+    # ─────────────────────────────────────────────
+    LoginSuccess:
+      description: Successfully logged in
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuthSuccessResponse'
+          example:
+            success: true
+            message: 'Logged in successfully.'
+            data:
+              user:
+                id: '60d5ecb8b392d7001f3f4e1a'
+                name: 'John Doe'
+                email: 'john@example.com'
+                role: 'user'
+              accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+
+    LoginBadRequest:
+      description: Validation error (e.g., missing fields, invalid email)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            missing_email:
+              summary: Missing Email
+              value: { success: false, message: 'Email is required.' }
+            missing_password:
+              summary: Missing Password
+              value: { success: false, message: 'Password is required.' }
+            invalid_email:
+              summary: Invalid Email Format
+              value: { success: false, message: 'Invalid email or password.' }
+
+    LoginUnauthorized:
+      description: Invalid email or password
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example: { success: false, message: 'Invalid email or password.' }
+
+    # ─────────────────────────────────────────────
+    # Rate Limits & Lockouts
+    # ─────────────────────────────────────────────
+    RateLimitWithCooldown:
+      description: Rate limit exceeded (IP limit or 20-second email cooldown)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            cooldown_active:
+              summary: Email Cooldown Active
+              value:
+                { success: false, message: 'Please wait 15 seconds before requesting a new code.' }
+            ip_rate_limited:
+              summary: IP Rate Limited
+              value: { success: false, message: 'Too many requests. Please try again later.' }
 
     OTPLockout:
       description: Maximum verification attempts exceeded
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              success: { type: boolean, example: false }
-              message:
-                {
-                  type: string,
-                  example: 'Maximum verification attempts exceeded. Please request a new OTP.',
-                }
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            {
+              success: false,
+              message: 'Maximum verification attempts exceeded. Please request a new OTP.',
+            }
 
     EmailNotVerified:
       description: Email not verified
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              success: { type: boolean, example: false }
-              message: { type: string, example: 'Please verify your email before logging in.' }
+            $ref: '#/components/schemas/ErrorResponse'
+          example: { success: false, message: 'Please verify your email before logging in.' }

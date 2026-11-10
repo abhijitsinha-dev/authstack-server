@@ -18,14 +18,19 @@ paths:
       responses:
         '200':
           description: OTP sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OtpSuccessResponse'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          $ref: '#/components/responses/RequestOtpBadRequest'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/RequestOtpConflict'
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '500':
           $ref: '#/components/responses/InternalServerError'
+          description: Server or email sending error
 
   /api/v1/auth/signup/resend-otp:
     post:
@@ -44,14 +49,19 @@ paths:
       responses:
         '200':
           description: New OTP sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OtpSuccessResponse'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          $ref: '#/components/responses/ResendOtpBadRequest'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/ResendOtpNotFound'
         '429':
-          $ref: '#/components/responses/EmailCooldown'
+          $ref: '#/components/responses/RateLimitWithCooldown'
         '500':
           $ref: '#/components/responses/InternalServerError'
+          description: Failed to send email
 
   /api/v1/auth/signup/verify-otp:
     post:
@@ -70,15 +80,11 @@ paths:
                 otp: { type: string, example: '123456' }
       responses:
         '200':
-          description: Successfully verified
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthSuccessResponse'
+          $ref: '#/components/responses/VerifyOtpSuccess'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          $ref: '#/components/responses/VerifyOtpBadRequest'
         '404':
-          $ref: '#/components/responses/NotFound'
+          $ref: '#/components/responses/VerifyOtpNotFound'
         '429':
           $ref: '#/components/responses/OTPLockout'
 
@@ -99,13 +105,11 @@ paths:
                 password: { type: string, example: Password123! }
       responses:
         '200':
-          description: Successfully logged in
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthSuccessResponse'
+          $ref: '#/components/responses/LoginSuccess'
+        '400':
+          $ref: '#/components/responses/LoginBadRequest'
         '401':
-          $ref: '#/components/responses/Unauthorized'
+          $ref: '#/components/responses/LoginUnauthorized'
         '403':
           $ref: '#/components/responses/EmailNotVerified'
         '429':
@@ -121,5 +125,9 @@ paths:
       responses:
         '200':
           description: Successfully logged out
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutSuccessResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
