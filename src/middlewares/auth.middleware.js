@@ -5,7 +5,8 @@ import { ApiError } from '../utils/ApiError.js';
 export const protect = async (req, _res, next) => {
   // 1. Get token from header
   const authHeader = req.headers.authorization;
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+  const token =
+    authHeader && /^bearer\s+/i.test(authHeader) ? authHeader.replace(/^bearer\s+/i, '') : null;
 
   if (!token) {
     throw new ApiError(401, 'Not authorized, no token provided');
