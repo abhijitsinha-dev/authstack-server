@@ -8,7 +8,6 @@ components:
           example: true
         message:
           type: string
-          # No trailing period — matches auth.controller.js exactly
           example: Verification code sent to your email
         data:
           type: object
@@ -33,8 +32,8 @@ components:
               $ref: '#/components/schemas/UserResponse'
             accessToken:
               type: string
-              # Block scalar (not inline) because the value contains ": " — an
-              # inline scalar with ": " would be parsed as a key separator
+              # Block scalar — the value contains ": " which YAML would otherwise
+              # parse as a key separator inside an inline scalar.
               description: |
                 Short-lived JWT (15 min). Send as `Authorization: Bearer <token>`.
             refreshToken:
@@ -44,8 +43,7 @@ components:
                 new access tokens via `POST /api/v1/auth/refresh`.
 
                 Web clients do **not** receive this in the JSON body — they receive
-                it as an `HttpOnly` cookie via the `Set-Cookie` response header
-                (see `VerifyOtpSuccess` / `LoginSuccess` response headers).
+                it as an `HttpOnly` cookie via the `Set-Cookie` response header.
 
     LogoutSuccessResponse:
       type: object
@@ -76,3 +74,35 @@ components:
         message:
           type: string
           example: Password reset successfully. Please log in with your new password.
+
+    RefreshSuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            accessToken:
+              type: string
+              description: New short-lived JWT (15 min).
+            refreshToken:
+              type: string
+              description: |
+                **Mobile clients only.** The rotated refresh token. The old one
+                is now invalid.
+
+                Web clients receive this via the `Set-Cookie` header instead.
+
+    MeSuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            user:
+              $ref: '#/components/schemas/UserResponse'

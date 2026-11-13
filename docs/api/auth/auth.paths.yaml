@@ -134,6 +134,96 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api/v1/auth/refresh:
+    post:
+      summary: Rotate refresh token and issue a new access token
+      description: |
+        Exchanges a valid refresh token for a new access token. The refresh
+        token is **rotated** — the old one is invalidated and a new one is
+        issued. Clients MUST persist the new refresh token.
+
+        **Client behavior:**
+
+        - **Web:** refresh token is sent as an `HttpOnly` cookie (automatically
+          by the browser). The rotated refresh token is set on a `Set-Cookie`
+          header. Only `accessToken` is in the JSON body.
+        - **Mobile:** refresh token is sent in the JSON body. Both new tokens
+          are returned in the JSON body.
+
+        **Reuse detection:** if the client presents a refresh token that has
+        already been rotated (i.e., a replay), the entire session is revoked
+        and all future refreshes for that session return `401`. The legitimate
+        user will need to log in again.
+      tags: [Auth]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken:
+                  type: string
+                  description: |
+                    Mobile only. Web clients send the refresh token via the
+                    `refreshToken` HttpOnly cookie — no body is required.
+      responses:
+        '200':
+          $ref: '#/components/responses/RefreshSuccess'
+        '401':
+          description: |
+            No token, invalid signature/expiry, session revoked, or **reuse
+            detected**. Each case returns a distinct message — see examples.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                no_token:
+                  summary: No refresh token provided
+                  value: { success: false, message: 'No refresh token provided' }
+                invalid_or_expired:
+                  summary: Malformed, tampered, or expired refresh token
+                  value: { success: false, message: 'Invalid or expired refresh token' }
+                session_revoked:
+                  summary: Session revoked (logout, password reset, or admin action)
+                  value: { success: false, message: 'Session has been revoked or expired' }
+                reuse_detected:
+                  summary: Refresh token reuse detected — session revoked as a precaution
+                  value:
+                    {
+                      success: false,
+                      message: 'Refresh token reuse detected. Please log in again.',
+                    }
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/auth/me:
+    get:
+      summary: Get the current authenticated user
+      description: |
+        Returns the profile of the user associated with the supplied access
+        token. Used by clients on cold start (page reload, app restart) to
+        hydrate UI state without a full login round-trip.
+
+        The response shape is identical to the `user` field returned by
+        `/login` and `/signup/verify-otp`, so clients can share the same
+        parser.
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/MeSuccess'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /api/v1/auth/logout:
     post:
       summary: Log out of the current device
