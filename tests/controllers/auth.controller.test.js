@@ -1,18 +1,28 @@
 import { jest } from '@jest/globals';
 
-// 1. Mock the service layer (including the new logoutUser)
+// 1. Mock the service layer
 jest.unstable_mockModule('../../src/services/auth.service.js', () => ({
   requestSignupOtp: jest.fn(),
   resendSignupOtp: jest.fn(),
   verifySignupOtp: jest.fn(),
   loginUser: jest.fn(),
   logoutUser: jest.fn(),
+  requestPasswordReset: jest.fn(),
+  resetPassword: jest.fn(),
 }));
 
 // 2. Dynamic imports
-const { requestSignupOtp, resendSignupOtp, verifySignupOtp, loginUser, logoutUser } =
-  await import('../../src/services/auth.service.js');
-const { requestOtp, resendOtp, verifyOtp, login, logout } =
+const {
+  requestSignupOtp,
+  resendSignupOtp,
+  verifySignupOtp,
+  loginUser,
+  logoutUser,
+  requestPasswordReset,
+  resetPassword,
+} = await import('../../src/services/auth.service.js');
+
+const { requestOtp, resendOtp, verifyOtp, login, logout, forgotPassword, resetPasswordController } =
   await import('../../src/controllers/auth.controller.js');
 
 describe('auth.controller', () => {
@@ -22,7 +32,6 @@ describe('auth.controller', () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
-    // Mock Express Request
     req = {
       body: {},
       headers: {},
@@ -30,7 +39,6 @@ describe('auth.controller', () => {
       user: { sessionId: 'fake-session-id' },
     };
 
-    // Mock Express Response
     res = {
       status: jest.fn().mockReturnThis(),
       json: jest.fn(),
@@ -54,17 +62,18 @@ describe('auth.controller', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
-        message: 'Verification code sent to your email', // 👈 Fixed: removed period
+        message: 'Verification code sent to your email',
         data: { email: 'john@example.com' },
       });
     });
 
-    it('should throw an error if the service throws (Express 5 handles this automatically)', async () => {
+    it('should throw an error if the service throws', async () => {
       req.body = { email: 'fail@example.com' };
       requestSignupOtp.mockRejectedValue(new Error('Service failed'));
 
       await expect(requestOtp(req, res)).rejects.toThrow('Service failed');
       expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
     });
   });
 
@@ -79,7 +88,7 @@ describe('auth.controller', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
-        message: 'Verification code sent to your email', // 👈 Fixed: now matches requestOtp
+        message: 'Verification code sent to your email',
         data: { email: 'john@example.com' },
       });
     });
@@ -90,6 +99,7 @@ describe('auth.controller', () => {
 
       await expect(resendOtp(req, res)).rejects.toThrow('Cooldown active');
       expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
     });
   });
 
@@ -117,16 +127,13 @@ describe('auth.controller', () => {
       expect(res.cookie).toHaveBeenCalledWith(
         'refreshToken',
         'fake-refresh',
-        expect.objectContaining({
-          httpOnly: true,
-          sameSite: 'strict',
-        })
+        expect.objectContaining({ httpOnly: true, sameSite: 'strict' })
       );
 
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
-        message: 'Account verified successfully', // 👈 Fixed: removed period
+        message: 'Account verified successfully',
         data: {
           user: { id: 'u1', name: 'John', email: 'test@example.com', role: 'user' },
           accessToken: 'fake-access',
@@ -147,7 +154,7 @@ describe('auth.controller', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
-        message: 'Account verified successfully', // 👈 Fixed: removed period
+        message: 'Account verified successfully',
         data: {
           user: { id: 'u1', name: 'John', email: 'test@example.com', role: 'user' },
           accessToken: 'fake-access',
@@ -163,6 +170,7 @@ describe('auth.controller', () => {
       await expect(verifyOtp(req, res)).rejects.toThrow('Invalid OTP');
       expect(res.status).not.toHaveBeenCalled();
       expect(res.cookie).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
     });
   });
 
@@ -196,7 +204,7 @@ describe('auth.controller', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
-        message: 'Logged in successfully', // 👈 Fixed: removed period
+        message: 'Logged in successfully',
         data: {
           user: { id: 'u1', name: 'John', email: 'test@example.com', role: 'user' },
           accessToken: 'fake-access',
@@ -217,7 +225,7 @@ describe('auth.controller', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
-        message: 'Logged in successfully', // 👈 Fixed: removed period
+        message: 'Logged in successfully',
         data: {
           user: { id: 'u1', name: 'John', email: 'test@example.com', role: 'user' },
           accessToken: 'fake-access',
@@ -226,13 +234,14 @@ describe('auth.controller', () => {
       });
     });
 
-    it('should throw an error if the service fails (e.g., invalid credentials)', async () => {
+    it('should throw an error if the service fails', async () => {
       req.headers['user-agent'] = 'Mozilla/5.0';
       loginUser.mockRejectedValue(new Error('Invalid email or password.'));
 
       await expect(login(req, res)).rejects.toThrow('Invalid email or password.');
       expect(res.status).not.toHaveBeenCalled();
       expect(res.cookie).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
     });
   });
 
@@ -252,7 +261,7 @@ describe('auth.controller', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
-        message: 'Logged out successfully.', // Note: Assuming you kept the period here based on previous success
+        message: 'Logged out successfully.',
       });
     });
 
@@ -262,6 +271,67 @@ describe('auth.controller', () => {
       await expect(logout(req, res)).rejects.toThrow('Session not found');
       expect(res.status).not.toHaveBeenCalled();
       expect(res.clearCookie).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('forgotPassword', () => {
+    it('should call service and return the generic anti-enumeration message', async () => {
+      req.body = { email: 'john@example.com' };
+      requestPasswordReset.mockResolvedValue(undefined);
+
+      await forgotPassword(req, res);
+
+      expect(requestPasswordReset).toHaveBeenCalledWith({ email: 'john@example.com' });
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        message: 'If an account exists with that email, a password reset code has been sent.',
+      });
+    });
+
+    it('should propagate service errors', async () => {
+      req.body = { email: 'fail@example.com' };
+      requestPasswordReset.mockRejectedValue(new Error('Cooldown active'));
+
+      await expect(forgotPassword(req, res)).rejects.toThrow('Cooldown active');
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resetPasswordController', () => {
+    it('should call service and return 200 with success message (no tokens)', async () => {
+      req.body = {
+        email: 'john@example.com',
+        otp: '123456',
+        newPassword: 'NewPassword123!',
+        confirmPassword: 'NewPassword123!',
+      };
+      resetPassword.mockResolvedValue(undefined);
+
+      await resetPasswordController(req, res);
+
+      expect(resetPassword).toHaveBeenCalledWith({
+        email: 'john@example.com',
+        otp: '123456',
+        newPassword: 'NewPassword123!',
+      });
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        message: 'Password reset successfully. Please log in with your new password.',
+      });
+    });
+
+    it('should propagate service errors', async () => {
+      req.body = { email: 'fail@example.com', otp: '000000', newPassword: 'NewPassword123!' };
+      resetPassword.mockRejectedValue(new Error('Invalid OTP code.'));
+
+      await expect(resetPasswordController(req, res)).rejects.toThrow('Invalid OTP code.');
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
     });
   });
 });
