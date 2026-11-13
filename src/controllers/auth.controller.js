@@ -4,6 +4,7 @@ import {
   verifySignupOtp,
   loginUser,
   logoutUser,
+  refreshTokens,
   requestPasswordReset,
   resetPassword,
 } from '../services/auth.service.js';
@@ -57,6 +58,42 @@ export const login = async (req, res) => {
   });
 
   sendAuthResponse(req, res, user, accessToken, refreshToken, 'Logged in successfully');
+};
+
+/**
+ * Rotate the refresh token and return a new access token.
+ *
+ * Reads the refresh token from the HttpOnly cookie (web) or the request body
+ * (mobile). Returns the new access token in the JSON body in both cases.
+ * The new refresh token is either set as a cookie (web) or returned in the
+ * body (mobile) — the client MUST persist it, since the old one is now invalid.
+ */
+export const refreshTokenController = async (req, res) => {
+  const fromCookie = !!req.cookies?.refreshToken;
+  const token = req.cookies?.refreshToken || req.body?.refreshToken;
+
+  const { accessToken, refreshToken } = await refreshTokens({ refreshToken: token });
+
+  if (!fromCookie) {
+    // Mobile: both tokens in the body; client stores refresh in SecureStore
+    return res.status(200).json({
+      success: true,
+      data: { accessToken, refreshToken },
+    });
+  }
+
+  // Web: rotate the HttpOnly cookie, return only the access token in the body
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: (Number(process.env.REFRESH_TOKEN_TTL_DAYS) || 30) * 24 * 60 * 60 * 1000,
+  });
+
+  res.status(200).json({
+    success: true,
+    data: { accessToken },
+  });
 };
 
 export const logout = async (req, res) => {

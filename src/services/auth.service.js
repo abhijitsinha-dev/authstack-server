@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import User from '../models/user.model.js';
 import Otp from '../models/otp.model.js';
@@ -220,6 +221,59 @@ export const logoutUser = async (sessionId) => {
   }
 
   return session;
+};
+
+/**
+ * Rotate the refresh token and issue a new access token.
+ *
+ * The refresh token is single-use: each call invalidates the previous one
+ * and issues a fresh pair. If an old (already-rotated) token is presented,
+ * we treat it as a replay — the token either leaked or the client is buggy —
+ * and revoke the entire session.
+ */
+export const refreshTokens = async ({ refreshToken }) => {
+  if (!refreshToken) {
+    throw new ApiError(401, 'No refresh token provided');
+  }
+
+  // 1. Verify JWT signature and expiry
+  let payload;
+  try {
+    payload = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
+  } catch {
+    throw new ApiError(401, 'Invalid or expired refresh token');
+  }
+
+  // 2. Look up the session
+  const session = await Session.findById(payload.sid);
+  if (!session || session.isRevoked) {
+    throw new ApiError(401, 'Session has been revoked or expired');
+  }
+
+  // 3. 🚨 REUSE DETECTION: hash the incoming token and compare with the stored hash.
+  //    If they don't match, an OLD token is being replayed — either the token
+  //    leaked, or a client cached the previous one. Either way, revoke the
+  //    entire session so the attacker and the legitimate client both get
+  //    logged out (the legitimate user will just log in again).
+  const incomingHash = hashToken(refreshToken);
+  if (incomingHash !== session.refreshTokenHash) {
+    session.isRevoked = true;
+    session.revokedAt = new Date();
+    await session.save();
+    logger.warn(`Refresh token reuse detected for session ${payload.sid}. Session revoked.`);
+    throw new ApiError(401, 'Refresh token reuse detected. Please log in again.');
+  }
+
+  // 4. Rotate: issue new access + new refresh, store the new hash
+  const accessToken = generateAccessToken(payload.sub, payload.sid);
+  const newRefreshToken = generateRefreshToken(payload.sub, payload.sid);
+
+  session.refreshTokenHash = hashToken(newRefreshToken);
+  // Deliberately NOT updating ip / userAgent — those describe where the
+  // session was first established (login), not where it was last refreshed.
+  await session.save();
+
+  return { accessToken, refreshToken: newRefreshToken };
 };
 
 export const requestPasswordReset = async ({ email }) => {

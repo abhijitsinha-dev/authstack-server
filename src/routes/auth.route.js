@@ -5,6 +5,7 @@ import {
   verifyOtp,
   login,
   logout,
+  refreshTokenController,
   forgotPassword,
   resetPasswordController,
 } from '../controllers/auth.controller.js';
@@ -69,6 +70,19 @@ router.route('/login').post(
   }),
   validate(loginSchema),
   login
+);
+
+// No `protect`: the access token is expired by definition — that's why the
+// client is calling. No `validate`: the JWT signature IS the validation.
+// 30/min because this fires automatically on every cold start and every
+// 15-minute access-token expiry — high-frequency by design.
+router.route('/refresh').post(
+  rateLimit({
+    limit: isProduction ? 30 : DEV_LIMIT,
+    window: '1 m',
+    prefix: 'ratelimit:refresh',
+  }),
+  refreshTokenController
 );
 
 // Rate limit BEFORE protect: unauthenticated spam should also be capped
