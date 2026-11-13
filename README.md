@@ -2,13 +2,15 @@
 
 Backend API for the authstack project — an Express + MongoDB service built for serverless deployment on Vercel, with a dedicated BullMQ worker for background processing.
 
-> **Status:** Authentication flow (signup, login, logout) and password reset are fully implemented and tested. Core auth, secure JWT session management, and modular API documentation are production-ready.
+> **Status:** Authentication flow (signup, login, refresh, logout, current user) and password reset are fully implemented and tested. Core auth, secure JWT session management, and modular API documentation are production-ready.
 
 ---
 
 ## Features
 
-- **Authentication:** Secure signup (OTP), login, logout, and password reset flows with JWT Access/Refresh tokens.
+- **Authentication:** Secure signup (OTP), login, logout, refresh, and password reset flows with JWT Access/Refresh tokens.
+- **Refresh Token Rotation:** Single-use refresh tokens with automatic reuse detection. A replayed (already-rotated) token revokes the entire session — detects token theft.
+- **Current User:** `GET /me` for cold-start hydration, so clients can restore session state without a full login round-trip.
 - **Password Reset:** Forgot-password + reset-password with 6-digit OTP via email. All active sessions are revoked on successful reset.
 - **Multi-Device Sessions:** Tracks active sessions with device info and supports per-session revocation.
 - **Background Jobs:** BullMQ + Upstash Redis for asynchronous email delivery (signup, password reset).
@@ -22,6 +24,7 @@ Backend API for the authstack project — an Express + MongoDB service built for
 ### Security Highlights
 
 - **Atomic OTP consumption** — `findOneAndDelete` prevents concurrent-replay password hijacks.
+- **Refresh token reuse detection** — replaying a rotated token revokes the session; detects leaked or cached tokens.
 - **Two-tier OTP hashing** — bcrypt for the 6-digit OTP (slow, prevents offline brute-force); SHA-256 for the high-entropy refresh token (fast, allows DB lookup).
 - **HTML-escaped emails** — user-supplied `name` is escaped before interpolation, preventing markup injection in transactional emails.
 - **Session rotation on reset** — every successful password reset revokes all prior sessions.
@@ -154,7 +157,22 @@ All business logic routes are versioned under `/api/v1`. Rate limits shown below
 - **Body:** `{ email, password }`
 - **Description:** Authenticates the user. Returns an Access Token and sets a Refresh Token (HttpOnly cookie for web, JSON for mobile).
 - **Rate Limit:** 5 req/min.
-- **Errors:** `400` (validation), `401` (invalid credentials), `403` (email not verified), `429` (rate limit).
+- **Errors:** `400` (validation), `401` (invalid credentials), `403` (email not verified), `429` (rate limit), `500`.
+
+**`POST /refresh`**
+
+- **Body:** None for web (cookie sent automatically). `{ refreshToken }` for mobile.
+- **Description:** Rotates the refresh token and issues a new access token. The old refresh token is invalidated — clients must persist the new one.
+- **Reuse detection:** presenting an already-rotated token revokes the entire session, catching stolen or stale tokens.
+- **Rate Limit:** 30 req/min (higher than other endpoints — called automatically on cold start and every 15-min access-token expiry).
+- **Errors:** `401` (no token, invalid/expired, session revoked, **reuse detected**), `429`, `500`.
+
+**`GET /me`**
+
+- **Requires:** Bearer Token
+- **Description:** Returns the authenticated user's profile. Used on cold start to hydrate client UI state without a full login round-trip. Response is `Cache-Control: no-store`.
+- **Rate Limit:** 60 req/min.
+- **Errors:** `401` (unauthorized, session revoked, or user deleted), `429`, `500`.
 
 **`POST /logout`**
 
