@@ -13,21 +13,19 @@ const otpSchema = new mongoose.Schema(
         message: 'Please provide a valid email address.',
       },
     },
-    codeHash: {
+    codeHash: { type: String, required: true },
+    expiresAt: { type: Date, required: true },
+    attempts: { type: Number, default: 0 },
+    purpose: {
       type: String,
+      enum: ['signup', 'reset'],
       required: true,
-    },
-    expiresAt: {
-      type: Date,
-      required: true,
-    },
-    attempts: {
-      type: Number,
-      default: 0,
     },
   },
   { timestamps: true }
 );
+
+otpSchema.index({ email: 1, purpose: 1 });
 
 // MongoDB TTL index: automatically delete document when expiresAt is reached
 otpSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });

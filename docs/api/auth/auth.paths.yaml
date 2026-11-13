@@ -86,7 +86,24 @@ paths:
         '404':
           $ref: '#/components/responses/VerifyOtpNotFound'
         '429':
-          $ref: '#/components/responses/OTPLockout'
+          description: OTP lockout or IP rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                otp_lockout:
+                  summary: Maximum Verification Attempts Exceeded
+                  value:
+                    {
+                      success: false,
+                      message: 'Maximum verification attempts exceeded. Please request a new OTP.',
+                    }
+                ip_rate_limited:
+                  summary: IP Rate Limited
+                  value: { success: false, message: 'Too many requests. Please try again later.' }
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /api/v1/auth/login:
     post:
@@ -114,6 +131,8 @@ paths:
           $ref: '#/components/responses/EmailNotVerified'
         '429':
           $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /api/v1/auth/logout:
     post:
@@ -131,3 +150,139 @@ paths:
                 $ref: '#/components/schemas/LogoutSuccessResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/LogoutNotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/auth/forgot-password:
+    post:
+      summary: Request a password reset
+      description: |
+        Sends a 6-digit OTP to the user's email to reset their password.
+
+        **Anti-enumeration:** Always returns `200 OK` regardless of whether the email
+        exists or is verified. An attacker cannot distinguish "email not found" from
+        "email found" via this endpoint's response.
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, example: john@example.com }
+      responses:
+        '200':
+          description: Reset code sent (if email exists)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForgotPasswordSuccessResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_email:
+                  summary: Missing Email
+                  value: { success: false, message: 'Email is required.' }
+                invalid_email:
+                  summary: Invalid Email Format
+                  value: { success: false, message: 'Please provide a valid email address.' }
+        '429':
+          $ref: '#/components/responses/RateLimitWithCooldown'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/auth/reset-password:
+    post:
+      summary: Reset password with OTP
+      description: Verifies the OTP and updates the user's password. All active sessions are revoked.
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, otp, newPassword, confirmPassword]
+              properties:
+                email: { type: string, format: email, example: john@example.com }
+                otp: { type: string, example: '123456' }
+                newPassword: { type: string, format: password, example: NewPassword123! }
+                confirmPassword: { type: string, format: password, example: NewPassword123! }
+      responses:
+        '200':
+          description: Password reset successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResetPasswordSuccessResponse'
+        '400':
+          description: Validation error or invalid OTP
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_email:
+                  summary: Invalid Email Format
+                  value: { success: false, message: 'Please provide a valid email address.' }
+                invalid_otp_format:
+                  summary: Invalid OTP Format
+                  value: { success: false, message: 'OTP must be exactly 6 digits.' }
+                weak_password:
+                  summary: Weak Password
+                  value:
+                    {
+                      success: false,
+                      message: 'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.',
+                    }
+                passwords_do_not_match:
+                  summary: Passwords Do Not Match
+                  value: { success: false, message: 'Passwords do not match.' }
+                invalid_request:
+                  summary: Invalid Request (user not found)
+                  value: { success: false, message: 'Invalid request.' }
+                expired_otp:
+                  summary: Expired or Missing OTP
+                  value:
+                    {
+                      success: false,
+                      message: 'OTP has expired or does not exist. Please request a new one.',
+                    }
+                invalid_otp:
+                  summary: Invalid OTP Code
+                  value:
+                    { success: false, message: 'Invalid OTP code. You have 4 attempts remaining.' }
+                otp_already_used:
+                  summary: OTP Already Consumed
+                  value:
+                    {
+                      success: false,
+                      message: 'OTP has already been used. Please request a new one.',
+                    }
+        '429':
+          description: OTP lockout or rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                otp_lockout:
+                  summary: Maximum Verification Attempts Exceeded
+                  value:
+                    {
+                      success: false,
+                      message: 'Maximum verification attempts exceeded. Please request a new OTP.',
+                    }
+                ip_rate_limited:
+                  summary: IP Rate Limited
+                  value: { success: false, message: 'Too many requests. Please try again later.' }
+        '500':
+          $ref: '#/components/responses/InternalServerError'

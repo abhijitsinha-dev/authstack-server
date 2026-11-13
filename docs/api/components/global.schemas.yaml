@@ -15,6 +15,7 @@ components:
       properties:
         id:
           type: string
+          example: '60d5ecb8b392d7001f3f4e1a'
         name:
           type: string
           example: John Doe
@@ -24,4 +25,5 @@ components:
           example: john@example.com
         role:
           type: string
+          enum: [user, admin]
           example: user

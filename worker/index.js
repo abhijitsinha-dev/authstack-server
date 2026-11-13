@@ -1,7 +1,7 @@
 // worker/index.js
 import { Worker } from 'bullmq';
 import IORedis from 'ioredis';
-import { sendSignupOtpEmail } from '../src/services/email.service.js';
+import { sendSignupOtpEmail, sendPasswordResetEmail } from '../src/services/email.service.js';
 import { connectDB } from '../src/config/db.js';
 import { logger } from '../src/config/logger.js';
 
@@ -21,9 +21,17 @@ const worker = new Worker(
   'email-queue',
   async (job) => {
     logger.info(`Processing job ${job.id} of type ${job.name}`);
+
+    // 👇 Signup OTP Handler
     if (job.name === 'send-otp') {
       const { email, name, otp } = job.data;
       await sendSignupOtpEmail(email, name, otp);
+    }
+
+    // 👇 Password Reset OTP Handler
+    if (job.name === 'send-reset-otp') {
+      const { email, name, otp } = job.data;
+      await sendPasswordResetEmail(email, name, otp);
     }
   },
   {
@@ -35,8 +43,6 @@ const worker = new Worker(
     lockDuration: 120000,
     skipStalledCheck: true,
     skipLockRenewal: true,
-    removeOnComplete: { count: 0 },
-    removeOnFail: { count: 0 },
   }
 );
 

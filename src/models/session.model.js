@@ -7,6 +7,7 @@ const sessionSchema = new mongoose.Schema(
     ip: { type: String },
     userAgent: { type: String },
     isRevoked: { type: Boolean, default: false },
+    revokedAt: { type: Date },
     expiresAt: { type: Date, required: true },
   },
   { timestamps: true }

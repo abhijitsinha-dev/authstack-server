@@ -30,3 +30,32 @@ export const loginSchema = Joi.object({
   email: loginEmailField,
   password: loginPasswordField,
 });
+
+export const forgotPasswordSchema = Joi.object({
+  email: emailField,
+});
+
+export const resetPasswordSchema = Joi.object({
+  email: emailField,
+  otp: Joi.string().length(6).pattern(/^\d+$/).required().messages({
+    'any.required': 'OTP is required.',
+    'string.empty': 'OTP is required.',
+    'string.length': 'OTP must be exactly 6 digits.',
+    'string.pattern.base': 'OTP must contain only numbers.',
+  }),
+  newPassword: strongPasswordField,
+  confirmPassword: Joi.string()
+    .required()
+    .custom((value, helpers) => {
+      const { newPassword } = helpers.state.ancestors[0];
+      if (value !== newPassword) {
+        return helpers.error('any.only');
+      }
+      return value;
+    })
+    .messages({
+      'any.only': 'Passwords do not match.',
+      'any.required': 'Please confirm your password.',
+      'string.empty': 'Please confirm your password.',
+    }),
+});

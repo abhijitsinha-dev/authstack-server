@@ -2,7 +2,11 @@ paths:
   /:
     get:
       summary: Root health probe
-      description: Returns a basic status response. Development mode includes extra fields.
+      description: |
+        Returns a basic status response.
+
+        **Production** returns `{ status, api }`.
+        **Development** additionally returns `{ service, environment, health }`.
       tags: [System]
       responses:
         '200':
@@ -14,15 +18,38 @@ paths:
                 properties:
                   status: { type: string, example: ok }
                   api: { type: string, example: v1 }
+                  service: { type: string, example: authstack }
+                  environment: { type: string, example: development }
+                  health: { type: string, example: /health }
+              examples:
+                production:
+                  summary: Production response
+                  value:
+                    status: ok
+                    api: v1
+                development:
+                  summary: Development response (includes diagnostics)
+                  value:
+                    status: ok
+                    service: authstack
+                    environment: development
+                    api: v1
+                    health: /health
 
   /health:
     get:
       summary: Detailed health check
-      description: Returns API status and database connectivity. Returns 503 if the database is disconnected.
+      description: |
+        Returns API status and database connectivity. Returns `503` if the database
+        is disconnected (production only — development always returns `200` with
+        a `degraded` status for local debugging).
+
+        **Production** response: `{ status, timestamp, uptime, database }`
+        **Development** adds: `{ environment, version, node, memory }`
       tags: [System]
       responses:
         '200':
-          description: API is healthy and database is connected.
+          description: API is healthy (and, in production, database is connected).
           content:
             application/json:
               schema:
@@ -32,12 +59,62 @@ paths:
                   timestamp: { type: string, format: date-time }
                   uptime: { type: integer, example: 3600 }
                   database: { type: string, example: connected }
+                  # Development-only fields
+                  environment: { type: string, example: development }
+                  version: { type: string, example: 1.0.0 }
+                  node: { type: string, example: v26.0.0 }
+                  memory:
+                    type: object
+                    properties:
+                      rss: { type: string, example: 45 MB }
+                      heapUsed: { type: string, example: 23 MB }
+              examples:
+                production_healthy:
+                  summary: Production, DB connected
+                  value:
+                    status: ok
+                    timestamp: '2026-11-13T10:30:00.000Z'
+                    uptime: 3600
+                    database: connected
+                development_healthy:
+                  summary: Development, DB connected (extra diagnostics)
+                  value:
+                    status: ok
+                    timestamp: '2026-11-13T10:30:00.000Z'
+                    uptime: 3600
+                    database: connected
+                    environment: development
+                    version: 1.0.0
+                    node: v26.0.0
+                    memory:
+                      rss: 45 MB
+                      heapUsed: 23 MB
+                development_degraded:
+                  summary: Development, DB disconnected (still returns 200)
+                  value:
+                    status: degraded
+                    timestamp: '2026-11-13T10:30:00.000Z'
+                    uptime: 3600
+                    database: disconnected
+                    environment: development
+                    version: 1.0.0
+                    node: v26.0.0
+                    memory:
+                      rss: 45 MB
+                      heapUsed: 23 MB
         '503':
-          description: API is running but database is disconnected.
+          description: API is running but database is disconnected (production only).
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   status: { type: string, example: degraded }
+                  timestamp: { type: string, format: date-time }
+                  uptime: { type: integer, example: 3600 }
                   database: { type: string, example: disconnected }
+              example:
+                status: degraded
+                timestamp: '2026-11-13T10:30:00.000Z'
+                uptime: 3600
+                database: disconnected

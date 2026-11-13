@@ -68,14 +68,30 @@ components:
     # Verify OTP Responses
     # ─────────────────────────────────────────────
     VerifyOtpSuccess:
-      description: Successfully verified
+      description: |
+        Successfully verified. **The response shape depends on the client:**
+
+        - **Web clients** — the `refreshToken` is sent as an `HttpOnly` cookie
+          (see `Set-Cookie` header). The JSON body contains only `accessToken`.
+        - **Mobile clients** — both `accessToken` and `refreshToken` are returned
+          in the JSON body.
+      headers:
+        Set-Cookie:
+          description: |
+            **Web clients only.** Contains the `refreshToken` cookie:
+            `refreshToken=<jwt>; HttpOnly; SameSite=Strict; Secure (in prod)`.
+            Mobile clients do not receive this header.
+          schema:
+            type: string
+            example: refreshToken=eyJhbGciOi...; Path=/; HttpOnly; SameSite=Strict
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/AuthSuccessResponse'
           example:
             success: true
-            message: 'Account verified successfully.'
+            # No trailing period — matches controller
+            message: Account verified successfully
             data:
               user:
                 id: '60d5ecb8b392d7001f3f4e1a'
@@ -123,14 +139,30 @@ components:
     # Login Responses
     # ─────────────────────────────────────────────
     LoginSuccess:
-      description: Successfully logged in
+      description: |
+        Successfully logged in. **The response shape depends on the client:**
+
+        - **Web clients** — the `refreshToken` is sent as an `HttpOnly` cookie
+          (see `Set-Cookie` header). The JSON body contains only `accessToken`.
+        - **Mobile clients** — both `accessToken` and `refreshToken` are returned
+          in the JSON body.
+      headers:
+        Set-Cookie:
+          description: |
+            **Web clients only.** Contains the `refreshToken` cookie:
+            `refreshToken=<jwt>; HttpOnly; SameSite=Strict; Secure (in prod)`.
+            Mobile clients do not receive this header.
+          schema:
+            type: string
+            example: refreshToken=eyJhbGciOi...; Path=/; HttpOnly; SameSite=Strict
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/AuthSuccessResponse'
           example:
             success: true
-            message: 'Logged in successfully.'
+            # No trailing period — matches controller
+            message: Logged in successfully
             data:
               user:
                 id: '60d5ecb8b392d7001f3f4e1a'
@@ -163,6 +195,20 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           example: { success: false, message: 'Invalid email or password.' }
+
+    # ─────────────────────────────────────────────
+    # Logout Responses
+    # ─────────────────────────────────────────────
+    LogoutNotFound:
+      description: |
+        Session not found — a rare race condition where the session was deleted
+        between the `protect` middleware's existence check and `logoutUser()`
+        revoking it.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example: { success: false, message: 'Session not found or already logged out.' }
 
     # ─────────────────────────────────────────────
     # Rate Limits & Lockouts

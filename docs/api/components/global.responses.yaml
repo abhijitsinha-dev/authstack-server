@@ -1,7 +1,7 @@
 components:
   responses:
     BadRequest:
-      description: Validation error
+      description: Validation error (generic fallback — most endpoints use a domain-specific 400)
       content:
         application/json:
           schema:
@@ -11,51 +11,68 @@ components:
             message: 'Validation error'
 
     Unauthorized:
-      description: Unauthorized (Invalid or missing token)
+      description: |
+        Authentication failed. Three possible causes, distinguished only by message:
+
+        1. No `Authorization` header, or header doesn't use the Bearer scheme
+        2. Bearer token present but invalid signature, malformed, or expired
+        3. Token valid but the session was revoked (logout, password reset, or admin action)
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
-          example:
-            success: false
-            message: 'Not authorized, no token provided'
+          examples:
+            no_token:
+              summary: Missing or malformed Authorization header
+              value: { success: false, message: 'Not authorized, no token provided' }
+            invalid_or_expired:
+              summary: Invalid signature, malformed, or expired token
+              value: { success: false, message: 'Not authorized, token failed or expired' }
+            session_revoked:
+              summary: Token valid but the underlying session was revoked
+              value: { success: false, message: 'Session has been revoked or expired' }
 
     NotFound:
-      description: Resource not found
+      description: Resource not found (catch-all 404 from the router)
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           example:
+            # Matches notFound.controller.js — interpolates the request URL
             success: false
-            message: 'Resource not found'
+            message: 'Route /api/v1/whatever not found'
 
     Conflict:
-      description: Resource already exists
+      description: Resource already exists (domain-specific 409)
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           example:
+            # Matches the requestSignupOtp conflict message
             success: false
-            message: 'Resource already exists'
+            message: 'An account with this email already exists. Please log in.'
 
     TooManyRequests:
-      description: Too many requests (Rate limited)
+      description: Too many requests (IP rate limit exceeded via Upstash)
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           example:
+            # Matches rateLimit.middleware.js exactly
             success: false
             message: 'Too many requests. Please try again later.'
 
     InternalServerError:
-      description: Internal server error
+      description: Internal server error (production masks the real message)
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           example:
+            # Matches error.middleware.js: prod returns "Internal server error",
+            # dev returns the real error message. Example shows prod.
             success: false
             message: 'Internal server error'
