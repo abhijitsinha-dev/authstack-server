@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import crypto from 'crypto';
 
 // ─────────────────────────────────────────────
 // 1. ESM MOCKS
@@ -35,6 +36,11 @@ const { default: jwt } = await import('jsonwebtoken');
 const { emailQueue } = await import('../../src/queues/email.queue.js');
 
 const inMinutes = (n) => new Date(Date.now() + n * 60 * 1000);
+
+// `hashToken` (from src/utils/jwt.js) is NOT mocked in route tests, so we
+// need to compute the same SHA-256 hash here to construct a session whose
+// stored hash matches the incoming token.
+const sha256 = (t) => crypto.createHash('sha256').update(t).digest('hex');
 
 // ─────────────────────────────────────────────
 // 3. TESTS
@@ -256,6 +262,176 @@ describe('POST /api/v1/auth/login', () => {
   });
 });
 
+// ─────────────────────────────────────────────
+// NEW: POST /refresh
+// ─────────────────────────────────────────────
+describe('POST /api/v1/auth/refresh', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should rotate tokens and return BOTH tokens in body (mobile)', async () => {
+    const token = 'valid-token';
+    const mockSession = {
+      isRevoked: false,
+      refreshTokenHash: sha256(token), // matches incoming hash
+      save: jest.fn(),
+    };
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue(mockSession);
+
+    const response = await request(app).post('/api/v1/auth/refresh').send({ refreshToken: token });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.accessToken).toBeDefined();
+    expect(response.body.data.refreshToken).toBeDefined(); // mobile: both in body
+    expect(response.headers['set-cookie']).toBeUndefined(); // mobile: no cookie
+    expect(mockSession.save).toHaveBeenCalled();
+  });
+
+  it('should rotate tokens and set a cookie, NOT return refreshToken in body (web)', async () => {
+    const token = 'valid-token';
+    const mockSession = {
+      isRevoked: false,
+      refreshTokenHash: sha256(token),
+      save: jest.fn(),
+    };
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue(mockSession);
+
+    const response = await request(app)
+      .post('/api/v1/auth/refresh')
+      .set('Cookie', `refreshToken=${token}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.accessToken).toBeDefined();
+    expect(response.body.data.refreshToken).toBeUndefined(); // web: refresh in cookie
+    expect(response.headers['set-cookie']).toBeDefined(); // rotated cookie set
+    expect(response.headers['set-cookie'][0]).toContain('refreshToken=');
+  });
+
+  // 🚨 SECURITY: end-to-end proof that reuse detection fires and revokes the session
+  it('should return 401 on reuse detection and revoke the session in the DB', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    const mockSession = {
+      isRevoked: false,
+      refreshTokenHash: 'a-hash-from-a-previous-rotation', // ≠ sha256('stolen-token')
+      save: jest.fn(),
+    };
+    jest.spyOn(Session, 'findById').mockResolvedValue(mockSession);
+
+    const response = await request(app)
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: 'stolen-token' });
+
+    expect(response.status).toBe(401);
+    expect(response.body.message).toContain('reuse detected');
+
+    // Session revoked BEFORE responding
+    expect(mockSession.isRevoked).toBe(true);
+    expect(mockSession.revokedAt).toBeInstanceOf(Date);
+    expect(mockSession.save).toHaveBeenCalled();
+  });
+
+  it('should return 401 with no token provided', async () => {
+    const response = await request(app).post('/api/v1/auth/refresh').send({});
+    expect(response.status).toBe(401);
+    expect(response.body.message).toContain('No refresh token');
+  });
+
+  it('should return 401 for a malformed token', async () => {
+    jest.spyOn(jwt, 'verify').mockImplementation(() => {
+      throw new Error('jwt malformed');
+    });
+
+    const response = await request(app)
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: 'not-a-jwt' });
+
+    expect(response.status).toBe(401);
+    expect(response.body.message).toContain('Invalid or expired');
+  });
+
+  it('should return 401 if the session is already revoked', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: true });
+
+    const response = await request(app)
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: 'valid-token' });
+
+    expect(response.status).toBe(401);
+    expect(response.body.message).toContain('revoked');
+  });
+});
+
+// ─────────────────────────────────────────────
+// NEW: GET /me
+// ─────────────────────────────────────────────
+describe('GET /api/v1/auth/me', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should return the current user for a valid access token', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1', role: 'user' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
+    jest.spyOn(User, 'findById').mockResolvedValue({
+      _id: 'u1',
+      name: 'John Doe',
+      email: 'john@example.com',
+      role: 'user',
+    });
+
+    const response = await request(app)
+      .get('/api/v1/auth/me')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.user).toEqual({
+      id: 'u1',
+      name: 'John Doe',
+      email: 'john@example.com',
+      role: 'user',
+    });
+    // Proves `Cache-Control: no-store` is set (user data isn't cacheable)
+    expect(response.headers['cache-control']).toBe('no-store');
+  });
+
+  it('should return 401 without a token', async () => {
+    const response = await request(app).get('/api/v1/auth/me');
+
+    expect(response.status).toBe(401);
+    expect(response.body.message).toContain('no token');
+  });
+
+  it('should return 401 if the session is revoked', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: true });
+
+    const response = await request(app)
+      .get('/api/v1/auth/me')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(response.status).toBe(401);
+    expect(response.body.message).toContain('revoked');
+  });
+
+  it('should return 401 if the user no longer exists (stale session)', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'deleted-user' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
+    jest.spyOn(User, 'findById').mockResolvedValue(null);
+
+    const response = await request(app)
+      .get('/api/v1/auth/me')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(response.status).toBe(401);
+    expect(response.body.message).toContain('no longer valid');
+  });
+});
+
 describe('POST /api/v1/auth/logout', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -307,8 +483,6 @@ describe('POST /api/v1/auth/forgot-password', () => {
     );
   });
 
-  // 🔒 Anti-enumeration: non-existent users must produce the SAME 200 response
-  // with NO queue job (identical to the verified-user path from the client's view)
   it('should return 200 and NOT queue an email for a non-existent user (anti-enumeration)', async () => {
     jest.spyOn(User, 'findOne').mockResolvedValue(null);
 
@@ -332,12 +506,7 @@ describe('POST /api/v1/auth/forgot-password', () => {
     expect(emailQueue.add).not.toHaveBeenCalled();
   });
 
-  // 👇 NEW: end-to-end proof that the two paths are indistinguishable
-  // The three tests above prove "each path returns 200". This one proves
-  // "both paths return the EXACT SAME response" — a stronger guarantee
-  // that would catch a future change adding a conditional message.
   it('should return identical responses for existing and non-existent emails', async () => {
-    // Case A: verified user (queues email)
     jest.spyOn(User, 'findOne').mockResolvedValue({ _id: 'u1', name: 'John', isVerified: true });
     jest.spyOn(Otp, 'findOne').mockResolvedValue({ createdAt: new Date(Date.now() - 25000) });
     jest.spyOn(Otp, 'deleteMany').mockResolvedValue({});
@@ -347,7 +516,6 @@ describe('POST /api/v1/auth/forgot-password', () => {
       .post('/api/v1/auth/forgot-password')
       .send({ email: 'john@example.com' });
 
-    // Case B: non-existent user (does NOT queue email)
     jest.restoreAllMocks();
     jest.spyOn(User, 'findOne').mockResolvedValue(null);
 
@@ -355,7 +523,6 @@ describe('POST /api/v1/auth/forgot-password', () => {
       .post('/api/v1/auth/forgot-password')
       .send({ email: 'nobody@example.com' });
 
-    // 👇 The ENTIRE response body must be identical, not just the status
     expect(missing.status).toBe(existing.status);
     expect(missing.body).toEqual(existing.body);
   });

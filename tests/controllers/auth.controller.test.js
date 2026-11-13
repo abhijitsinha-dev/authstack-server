@@ -7,6 +7,8 @@ jest.unstable_mockModule('../../src/services/auth.service.js', () => ({
   verifySignupOtp: jest.fn(),
   loginUser: jest.fn(),
   logoutUser: jest.fn(),
+  refreshTokens: jest.fn(), // 👈 NEW
+  getCurrentUser: jest.fn(), // 👈 NEW
   requestPasswordReset: jest.fn(),
   resetPassword: jest.fn(),
 }));
@@ -18,12 +20,23 @@ const {
   verifySignupOtp,
   loginUser,
   logoutUser,
+  refreshTokens,
+  getCurrentUser,
   requestPasswordReset,
   resetPassword,
 } = await import('../../src/services/auth.service.js');
 
-const { requestOtp, resendOtp, verifyOtp, login, logout, forgotPassword, resetPasswordController } =
-  await import('../../src/controllers/auth.controller.js');
+const {
+  requestOtp,
+  resendOtp,
+  verifyOtp,
+  login,
+  refreshTokenController,
+  getMe,
+  logout,
+  forgotPassword,
+  resetPasswordController,
+} = await import('../../src/controllers/auth.controller.js');
 
 describe('auth.controller', () => {
   let req;
@@ -35,6 +48,7 @@ describe('auth.controller', () => {
     req = {
       body: {},
       headers: {},
+      cookies: {}, // 👈 NEW — refreshTokenController reads req.cookies
       ip: '127.0.0.1',
       user: { sessionId: 'fake-session-id' },
     };
@@ -44,6 +58,7 @@ describe('auth.controller', () => {
       json: jest.fn(),
       cookie: jest.fn(),
       clearCookie: jest.fn(),
+      setHeader: jest.fn(), // 👈 NEW — getMe sets Cache-Control
     };
   });
 
@@ -241,6 +256,122 @@ describe('auth.controller', () => {
       await expect(login(req, res)).rejects.toThrow('Invalid email or password.');
       expect(res.status).not.toHaveBeenCalled();
       expect(res.cookie).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // NEW: refreshTokenController
+  // ─────────────────────────────────────────────
+  describe('refreshTokenController', () => {
+    beforeEach(() => {
+      refreshTokens.mockResolvedValue({
+        accessToken: 'new-access',
+        refreshToken: 'new-refresh',
+      });
+    });
+
+    it('should read from cookie and set a rotated cookie (web)', async () => {
+      req.cookies = { refreshToken: 'cookie-token' };
+
+      await refreshTokenController(req, res);
+
+      expect(refreshTokens).toHaveBeenCalledWith({ refreshToken: 'cookie-token' });
+
+      expect(res.cookie).toHaveBeenCalledWith(
+        'refreshToken',
+        'new-refresh',
+        expect.objectContaining({ httpOnly: true, sameSite: 'strict' })
+      );
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      const json = res.json.mock.calls[0][0];
+      expect(json.success).toBe(true);
+      expect(json.data.accessToken).toBe('new-access');
+      // Web: refresh token is in the cookie, not the body
+      expect(json.data.refreshToken).toBeUndefined();
+    });
+
+    it('should read from body and return BOTH tokens (mobile)', async () => {
+      req.cookies = {};
+      req.body = { refreshToken: 'body-token' };
+
+      await refreshTokenController(req, res);
+
+      expect(refreshTokens).toHaveBeenCalledWith({ refreshToken: 'body-token' });
+      expect(res.cookie).not.toHaveBeenCalled();
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      const json = res.json.mock.calls[0][0];
+      expect(json.data.accessToken).toBe('new-access');
+      // Mobile: both tokens in the body
+      expect(json.data.refreshToken).toBe('new-refresh');
+    });
+
+    it('should prefer cookie over body when both are present', async () => {
+      req.cookies = { refreshToken: 'cookie-token' };
+      req.body = { refreshToken: 'body-token' };
+
+      await refreshTokenController(req, res);
+
+      // `req.cookies?.refreshToken || req.body?.refreshToken` — cookie wins
+      expect(refreshTokens).toHaveBeenCalledWith({ refreshToken: 'cookie-token' });
+    });
+
+    it('should propagate service errors (e.g., reuse detection)', async () => {
+      req.cookies = { refreshToken: 'old-token' };
+      refreshTokens.mockRejectedValue(new Error('Refresh token reuse detected'));
+
+      await expect(refreshTokenController(req, res)).rejects.toThrow('reuse detected');
+      expect(res.cookie).not.toHaveBeenCalled();
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // NEW: getMe
+  // ─────────────────────────────────────────────
+  describe('getMe', () => {
+    beforeEach(() => {
+      req.user = { id: 'u1', sessionId: 's1', role: 'user' };
+    });
+
+    it('should return the current user with Cache-Control header', async () => {
+      getCurrentUser.mockResolvedValue({
+        _id: 'u1',
+        name: 'John',
+        email: 'j@example.com',
+        role: 'user',
+      });
+
+      await getMe(req, res);
+
+      expect(getCurrentUser).toHaveBeenCalledWith({ userId: 'u1' });
+      expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        data: {
+          user: {
+            id: 'u1',
+            name: 'John',
+            email: 'j@example.com',
+            role: 'user',
+          },
+        },
+      });
+    });
+
+    it('should propagate service errors (stale session → user deleted)', async () => {
+      getCurrentUser.mockRejectedValue(
+        new Error('Session is no longer valid. Please log in again.')
+      );
+
+      await expect(getMe(req, res)).rejects.toThrow('Session is no longer valid');
+      expect(res.setHeader).not.toHaveBeenCalled();
+      expect(res.status).not.toHaveBeenCalled();
       expect(res.json).not.toHaveBeenCalled();
     });
   });

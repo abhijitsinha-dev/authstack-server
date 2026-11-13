@@ -7,6 +7,7 @@ import { jest } from '@jest/globals';
 jest.unstable_mockModule('../../src/models/user.model.js', () => ({
   default: {
     findOne: jest.fn(),
+    findById: jest.fn(), // 👈 NEW — used by getCurrentUser
     create: jest.fn(),
     deleteOne: jest.fn(),
   },
@@ -25,6 +26,7 @@ jest.unstable_mockModule('../../src/models/otp.model.js', () => ({
 jest.unstable_mockModule('../../src/models/session.model.js', () => ({
   default: {
     create: jest.fn(),
+    findById: jest.fn(), // 👈 NEW — used by refreshTokens
     findByIdAndUpdate: jest.fn(),
     updateMany: jest.fn(),
   },
@@ -47,6 +49,10 @@ jest.unstable_mockModule('bcryptjs', () => ({
   default: { compare: jest.fn() },
 }));
 
+jest.unstable_mockModule('jsonwebtoken', () => ({
+  default: { verify: jest.fn() }, // 👈 NEW — refreshTokens calls jwt.verify
+}));
+
 jest.unstable_mockModule('../../src/utils/jwt.js', () => ({
   generateAccessToken: jest.fn().mockReturnValue('fake-access-token'),
   generateRefreshToken: jest.fn().mockReturnValue('fake-refresh-token'),
@@ -58,7 +64,7 @@ jest.unstable_mockModule('validator/lib/isStrongPassword.js', () => ({
 }));
 
 jest.unstable_mockModule('../../src/config/logger.js', () => ({
-  logger: { info: jest.fn(), error: jest.fn() },
+  logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() }, // 👈 NEW — warn used in refreshTokens
 }));
 
 // ─────────────────────────────────────────────
@@ -68,6 +74,7 @@ const { default: User } = await import('../../src/models/user.model.js');
 const { default: Otp } = await import('../../src/models/otp.model.js');
 const { default: Session } = await import('../../src/models/session.model.js');
 const { default: bcrypt } = await import('bcryptjs');
+const { default: jwt } = await import('jsonwebtoken');
 const { default: isStrongPassword } = await import('validator/lib/isStrongPassword.js');
 const { emailQueue } = await import('../../src/queues/email.queue.js');
 const { sendSignupOtpEmail } = await import('../../src/services/email.service.js');
@@ -78,6 +85,8 @@ const {
   verifySignupOtp,
   loginUser,
   logoutUser,
+  refreshTokens, // 👈 NEW
+  getCurrentUser, // 👈 NEW
   requestPasswordReset,
   resetPassword,
 } = await import('../../src/services/auth.service.js');
@@ -348,6 +357,113 @@ describe('auth.service', () => {
     });
   });
 
+  // ─────────────────────────────────────────────
+  // NEW: refreshTokens
+  // ─────────────────────────────────────────────
+  describe('refreshTokens', () => {
+    const validToken = 'valid-refresh-token';
+    const decodedPayload = { sub: 'u1', sid: 's1' };
+
+    it('should throw 401 if no token is provided', async () => {
+      await expect(refreshTokens({})).rejects.toThrow('No refresh token provided');
+    });
+
+    it('should throw 401 if jwt.verify fails (malformed/expired)', async () => {
+      jwt.verify.mockImplementation(() => {
+        throw new Error('jwt malformed');
+      });
+
+      await expect(refreshTokens({ refreshToken: 'bad' })).rejects.toThrow(
+        'Invalid or expired refresh token'
+      );
+    });
+
+    it('should throw 401 if the session does not exist', async () => {
+      jwt.verify.mockReturnValue(decodedPayload);
+      Session.findById.mockResolvedValue(null);
+
+      await expect(refreshTokens({ refreshToken: validToken })).rejects.toThrow(
+        'Session has been revoked or expired'
+      );
+    });
+
+    it('should throw 401 if the session is already revoked', async () => {
+      jwt.verify.mockReturnValue(decodedPayload);
+      Session.findById.mockResolvedValue({ isRevoked: true });
+
+      await expect(refreshTokens({ refreshToken: validToken })).rejects.toThrow(
+        'Session has been revoked or expired'
+      );
+    });
+
+    // 🚨 SECURITY: the reuse detection test is the most important one in this file.
+    // If someone "simplifies" the rotation logic and removes the hash comparison,
+    // this test fails — proving an old stolen token could hijack the session.
+    it('should detect reuse, revoke the session, and throw 401', async () => {
+      jwt.verify.mockReturnValue(decodedPayload);
+      const mockSession = {
+        isRevoked: false,
+        refreshTokenHash: 'hash-of-a-different-token', // ≠ 'fake-hash' (hashToken mock output)
+        save: jest.fn(),
+      };
+      Session.findById.mockResolvedValue(mockSession);
+
+      await expect(refreshTokens({ refreshToken: validToken })).rejects.toThrow(
+        'Refresh token reuse detected'
+      );
+
+      // Session revoked BEFORE the throw
+      expect(mockSession.isRevoked).toBe(true);
+      expect(mockSession.revokedAt).toBeInstanceOf(Date);
+      expect(mockSession.save).toHaveBeenCalled();
+    });
+
+    it('should rotate tokens and update the stored hash on success', async () => {
+      jwt.verify.mockReturnValue(decodedPayload);
+      const mockSession = {
+        isRevoked: false,
+        refreshTokenHash: 'fake-hash', // matches hashToken mock output for any input
+        save: jest.fn(),
+      };
+      Session.findById.mockResolvedValue(mockSession);
+
+      const result = await refreshTokens({ refreshToken: validToken });
+
+      expect(result.accessToken).toBe('fake-access-token');
+      expect(result.refreshToken).toBe('fake-refresh-token');
+
+      // Hash was updated (still 'fake-hash' because the mock can't distinguish inputs,
+      // but `save()` was called — proving rotation happened)
+      expect(mockSession.save).toHaveBeenCalled();
+
+      // Session was NOT revoked — successful rotation
+      expect(mockSession.isRevoked).toBe(false);
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // NEW: getCurrentUser
+  // ─────────────────────────────────────────────
+  describe('getCurrentUser', () => {
+    it('should return the user document when found', async () => {
+      const mockUser = { _id: 'u1', name: 'John', email: 'j@example.com', role: 'user' };
+      User.findById.mockResolvedValue(mockUser);
+
+      const result = await getCurrentUser({ userId: 'u1' });
+
+      expect(User.findById).toHaveBeenCalledWith('u1');
+      expect(result).toBe(mockUser);
+    });
+
+    it('should throw 401 if the user no longer exists (stale session)', async () => {
+      User.findById.mockResolvedValue(null);
+
+      await expect(getCurrentUser({ userId: 'deleted-user' })).rejects.toThrow(
+        'Session is no longer valid. Please log in again.'
+      );
+    });
+  });
+
   describe('logoutUser', () => {
     const sessionId = 's1';
 
@@ -391,7 +507,6 @@ describe('auth.service', () => {
       expect(result).toBeUndefined();
       expect(Otp.findOne).not.toHaveBeenCalled();
       expect(emailQueue.add).not.toHaveBeenCalled();
-      // 👇 Covers auth.service.js:287-288 — the log line executes
       expect(logger.info).toHaveBeenCalledWith(
         expect.stringContaining('non-existent or unverified')
       );
@@ -407,7 +522,6 @@ describe('auth.service', () => {
       expect(result).toBeUndefined();
       expect(Otp.findOne).not.toHaveBeenCalled();
       expect(emailQueue.add).not.toHaveBeenCalled();
-      // 👇 Covers auth.service.js:287-288
       expect(logger.info).toHaveBeenCalledWith(
         expect.stringContaining('non-existent or unverified')
       );
