@@ -5,6 +5,7 @@ import {
   loginUser,
   logoutUser,
   refreshTokens,
+  getCurrentUser,
   requestPasswordReset,
   resetPassword,
 } from '../services/auth.service.js';
@@ -93,6 +94,32 @@ export const refreshTokenController = async (req, res) => {
   res.status(200).json({
     success: true,
     data: { accessToken },
+  });
+};
+
+/**
+ * Return the authenticated user's profile.
+ *
+ * Used by clients on cold start to hydrate the UI without a full
+ * login round-trip. Response shape matches the `user` field returned by
+ * /login and /verify-otp, so clients can share the same parser.
+ */
+export const getMe = async (req, res) => {
+  const user = await getCurrentUser({ userId: req.user.id });
+
+  // User data must not be cached by proxies or shared caches — it's per-user.
+  res.setHeader('Cache-Control', 'no-store');
+
+  res.status(200).json({
+    success: true,
+    data: {
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    },
   });
 };
 

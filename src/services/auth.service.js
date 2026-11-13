@@ -208,6 +208,24 @@ export const loginUser = async ({ email, password, ip, userAgent }) => {
   return { user, accessToken, refreshToken };
 };
 
+/**
+ * Fetch the authenticated user's profile.
+ *
+ * `req.user.id` comes from the `protect` middleware, which already verified
+ * the access token and confirmed the session is active. This second DB read
+ * exists because we need `name` / `email` — the JWT only carries `sub` (id)
+ * and `sid` (session), to keep tokens small.
+ */
+export const getCurrentUser = async ({ userId }) => {
+  const user = await User.findById(userId);
+  if (!user) {
+    // Edge case: session references a user that's been deleted.
+    // Treat as a revoked session — don't reveal "user was deleted".
+    throw new ApiError(401, 'Session is no longer valid. Please log in again.');
+  }
+  return user;
+};
+
 export const logoutUser = async (sessionId) => {
   // Mark the session as revoked in the database
   const session = await Session.findByIdAndUpdate(

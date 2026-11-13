@@ -6,6 +6,7 @@ import {
   login,
   logout,
   refreshTokenController,
+  getMe,
   forgotPassword,
   resetPasswordController,
 } from '../controllers/auth.controller.js';
@@ -83,6 +84,20 @@ router.route('/refresh').post(
     prefix: 'ratelimit:refresh',
   }),
   refreshTokenController
+);
+
+// Protected: `protect` validates the access token + session, then `getMe`
+// does a second DB read for the full user profile. 60/min is generous for
+// real clients (called on cold start and profile views) but caps the damage
+// from a stolen access token being replayed.
+router.route('/me').get(
+  rateLimit({
+    limit: isProduction ? 60 : DEV_LIMIT,
+    window: '1 m',
+    prefix: 'ratelimit:me',
+  }),
+  protect,
+  getMe
 );
 
 // Rate limit BEFORE protect: unauthenticated spam should also be capped
