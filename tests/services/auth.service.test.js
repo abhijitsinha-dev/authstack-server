@@ -26,8 +26,10 @@ jest.unstable_mockModule('../../src/models/otp.model.js', () => ({
 jest.unstable_mockModule('../../src/models/session.model.js', () => ({
   default: {
     create: jest.fn(),
+    find: jest.fn(), // 👈 NEW — listUserSessions
     findById: jest.fn(),
     findByIdAndUpdate: jest.fn(),
+    findOneAndUpdate: jest.fn(), // 👈 NEW — revokeSession
     updateMany: jest.fn(),
   },
 }));
@@ -87,6 +89,10 @@ const {
   logoutUser,
   refreshTokens,
   getCurrentUser,
+  // 👇 NEW
+  listUserSessions,
+  revokeSession,
+  revokeOtherSessions,
   requestPasswordReset,
   resetPassword,
 } = await import('../../src/services/auth.service.js');
@@ -95,6 +101,19 @@ const {
 // Helpers
 // ─────────────────────────────────────────────
 const inMinutes = (n) => new Date(Date.now() + n * 60 * 1000);
+
+// Builds a mock matching Mongoose's `find().sort().select().lean()` chain.
+// Exposing the inner mocks lets tests assert on sort/select arguments.
+const buildFindChain = (sessions) => {
+  const chain = {
+    sort: jest.fn(),
+    select: jest.fn(),
+    lean: jest.fn().mockResolvedValue(sessions),
+  };
+  chain.sort.mockReturnValue(chain);
+  chain.select.mockReturnValue(chain);
+  return chain;
+};
 
 // ─────────────────────────────────────────────
 // 3. TESTS
@@ -357,9 +376,6 @@ describe('auth.service', () => {
     });
   });
 
-  // ─────────────────────────────────────────────
-  // refreshTokens
-  // ─────────────────────────────────────────────
   describe('refreshTokens', () => {
     const validToken = 'valid-refresh-token';
     const decodedPayload = { sub: 'u1', sid: 's1' };
@@ -396,14 +412,11 @@ describe('auth.service', () => {
       );
     });
 
-    // 🚨 SECURITY: the reuse detection test is the most important one in this file.
-    // If someone "simplifies" the rotation logic and removes the hash comparison,
-    // this test fails — proving an old stolen token could hijack the session.
     it('should detect reuse, revoke the session, and throw 401', async () => {
       jwt.verify.mockReturnValue(decodedPayload);
       const mockSession = {
         isRevoked: false,
-        refreshTokenHash: 'hash-of-a-different-token', // ≠ 'fake-hash' (hashToken mock output)
+        refreshTokenHash: 'hash-of-a-different-token',
         save: jest.fn(),
       };
       Session.findById.mockResolvedValue(mockSession);
@@ -412,7 +425,6 @@ describe('auth.service', () => {
         'Refresh token reuse detected'
       );
 
-      // Session revoked BEFORE the throw
       expect(mockSession.isRevoked).toBe(true);
       expect(mockSession.revokedAt).toBeInstanceOf(Date);
       expect(mockSession.save).toHaveBeenCalled();
@@ -436,19 +448,14 @@ describe('auth.service', () => {
       expect(mockSession.save).toHaveBeenCalled();
       expect(mockSession.isRevoked).toBe(false);
 
-      // lastUsedAt was set to a fresh timestamp
       expect(mockSession.lastUsedAt).toBeInstanceOf(Date);
       expect(mockSession.lastUsedAt.getTime()).toBeGreaterThanOrEqual(before);
       expect(mockSession.lastUsedAt.getTime()).toBeLessThanOrEqual(after);
     });
 
-    // 📌 DESIGN: lastUsedAt is NOT throttled — the field advances on every
-    // refresh because `session.save()` already runs for hash rotation, so the
-    // extra field costs nothing. If someone later "optimizes" this with a
-    // throttle, this test fails and forces a design conversation.
     it('should advance lastUsedAt on every refresh (no throttle)', async () => {
       jwt.verify.mockReturnValue(decodedPayload);
-      const recentTimestamp = new Date(Date.now() - 2 * 60 * 1000); // 2 min ago
+      const recentTimestamp = new Date(Date.now() - 2 * 60 * 1000);
       const mockSession = {
         isRevoked: false,
         refreshTokenHash: 'fake-hash',
@@ -463,9 +470,6 @@ describe('auth.service', () => {
       expect(mockSession.lastUsedAt.getTime()).toBeGreaterThan(recentTimestamp.getTime());
     });
 
-    // 📌 MIGRATION: sessions created before lastUsedAt existed don't have the
-    // field. The service must stamp it on first post-deploy refresh, otherwise
-    // the sessions UI would render "Active Invalid Date" for those rows.
     it('should set lastUsedAt on legacy sessions that predate the field', async () => {
       jwt.verify.mockReturnValue(decodedPayload);
       const mockSession = {
@@ -482,9 +486,6 @@ describe('auth.service', () => {
     });
   });
 
-  // ─────────────────────────────────────────────
-  // getCurrentUser
-  // ─────────────────────────────────────────────
   describe('getCurrentUser', () => {
     it('should return the user document when found', async () => {
       const mockUser = { _id: 'u1', name: 'John', email: 'j@example.com', role: 'user' };
@@ -532,6 +533,162 @@ describe('auth.service', () => {
       await expect(logoutUser(sessionId)).rejects.toThrow(
         'Session not found or already logged out.'
       );
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // NEW: listUserSessions
+  // ─────────────────────────────────────────────
+  describe('listUserSessions', () => {
+    const userId = 'u1';
+    const currentSessionId = 's1';
+
+    it('should map sessions and mark the current one with isCurrent: true', async () => {
+      const mockSessions = [
+        {
+          _id: 's1',
+          ip: '127.0.0.1',
+          userAgent: 'Mozilla',
+          createdAt: new Date('2026-11-14T10:00:00Z'),
+          lastUsedAt: new Date('2026-11-14T12:00:00Z'),
+        },
+        {
+          _id: 's2',
+          ip: '203.0.113.1',
+          userAgent: 'iPhone',
+          createdAt: new Date('2026-11-13T10:00:00Z'),
+          lastUsedAt: new Date('2026-11-13T10:00:00Z'),
+        },
+      ];
+      Session.find.mockReturnValue(buildFindChain(mockSessions));
+
+      const result = await listUserSessions({ userId, currentSessionId });
+
+      expect(result).toHaveLength(2);
+      expect(result[0]).toEqual({
+        id: 's1',
+        ip: '127.0.0.1',
+        userAgent: 'Mozilla',
+        createdAt: new Date('2026-11-14T10:00:00Z'),
+        lastUsedAt: new Date('2026-11-14T12:00:00Z'),
+        isCurrent: true,
+      });
+      expect(result[1].id).toBe('s2');
+      expect(result[1].isCurrent).toBe(false);
+    });
+
+    it('should filter out revoked and expired sessions in the query', async () => {
+      const chain = buildFindChain([]);
+      Session.find.mockReturnValue(chain);
+
+      await listUserSessions({ userId, currentSessionId });
+
+      const filter = Session.find.mock.calls[0][0];
+      expect(filter.user).toBe(userId);
+      expect(filter.isRevoked).toBe(false);
+      expect(filter.expiresAt).toEqual({ $gt: expect.any(Date) });
+
+      // sorted by most recently used, selects without the hash
+      expect(chain.sort).toHaveBeenCalledWith({ lastUsedAt: -1 });
+      expect(chain.select).toHaveBeenCalledWith('-refreshTokenHash -__v');
+      expect(chain.lean).toHaveBeenCalled();
+    });
+
+    it('should return an empty array when the user has no sessions', async () => {
+      Session.find.mockReturnValue(buildFindChain([]));
+
+      const result = await listUserSessions({ userId, currentSessionId });
+
+      expect(result).toEqual([]);
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // NEW: revokeSession
+  // ─────────────────────────────────────────────
+  describe('revokeSession', () => {
+    const sessionId = 's2';
+    const userId = 'u1';
+    const currentSessionId = 's1';
+
+    it('should throw 400 if trying to revoke the current session (without a DB call)', async () => {
+      await expect(
+        revokeSession({ sessionId: currentSessionId, userId, currentSessionId })
+      ).rejects.toThrow('Cannot revoke the current session');
+
+      // Proves the guard short-circuits before hitting the DB
+      expect(Session.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('should throw 404 if the session does not exist (or belongs to another user)', async () => {
+      Session.findOneAndUpdate.mockResolvedValue(null);
+
+      await expect(revokeSession({ sessionId, userId, currentSessionId })).rejects.toThrow(
+        'Session not found'
+      );
+    });
+
+    // 🚨 SECURITY: the IDOR-prevention test — this is the most important one in this block
+    it('should scope the query by userId to prevent IDOR', async () => {
+      Session.findOneAndUpdate.mockResolvedValue({ _id: 's2', isRevoked: true });
+
+      await revokeSession({ sessionId, userId, currentSessionId });
+
+      const filter = Session.findOneAndUpdate.mock.calls[0][0];
+      // Without `user: userId`, any authenticated user could revoke anyone's session
+      expect(filter.user).toBe(userId);
+      expect(filter._id).toBe(sessionId);
+      expect(filter.isRevoked).toBe(false);
+      expect(filter.expiresAt).toEqual({ $gt: expect.any(Date) });
+    });
+
+    it('should return the revoked session on success', async () => {
+      const mockRevoked = { _id: 's2', isRevoked: true, revokedAt: new Date() };
+      Session.findOneAndUpdate.mockResolvedValue(mockRevoked);
+
+      const result = await revokeSession({ sessionId, userId, currentSessionId });
+
+      expect(result).toBe(mockRevoked);
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // NEW: revokeOtherSessions
+  // ─────────────────────────────────────────────
+  describe('revokeOtherSessions', () => {
+    const userId = 'u1';
+    const currentSessionId = 's1';
+
+    it('should return the count of revoked sessions', async () => {
+      Session.updateMany.mockResolvedValue({ modifiedCount: 3 });
+
+      const result = await revokeOtherSessions({ userId, currentSessionId });
+
+      expect(result).toEqual({ revokedCount: 3 });
+    });
+
+    // 📌 DESIGN: the $ne on _id is the whole feature — without it, this becomes
+    // "log out everywhere" and the caller loses their own session.
+    it('should exclude the current session via $ne filter', async () => {
+      Session.updateMany.mockResolvedValue({ modifiedCount: 0 });
+
+      await revokeOtherSessions({ userId, currentSessionId });
+
+      const filter = Session.updateMany.mock.calls[0][0];
+      expect(filter.user).toBe(userId);
+      expect(filter._id).toEqual({ $ne: currentSessionId });
+      expect(filter.isRevoked).toBe(false);
+      expect(filter.expiresAt).toEqual({ $gt: expect.any(Date) });
+    });
+
+    // 📌 IDEMPOTENCE: a user with only their current session calling "revoke all
+    // others" should succeed with count 0 — not error, not throw.
+    it('should succeed with revokedCount: 0 when no other sessions exist', async () => {
+      Session.updateMany.mockResolvedValue({ modifiedCount: 0 });
+
+      const result = await revokeOtherSessions({ userId, currentSessionId });
+
+      expect(result.revokedCount).toBe(0);
     });
   });
 

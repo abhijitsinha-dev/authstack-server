@@ -36,10 +36,6 @@ const { default: jwt } = await import('jsonwebtoken');
 const { emailQueue } = await import('../../src/queues/email.queue.js');
 
 const inMinutes = (n) => new Date(Date.now() + n * 60 * 1000);
-
-// `hashToken` (from src/utils/jwt.js) is NOT mocked in route tests, so we
-// need to compute the same SHA-256 hash here to construct a session whose
-// stored hash matches the incoming token.
 const sha256 = (t) => crypto.createHash('sha256').update(t).digest('hex');
 
 // ─────────────────────────────────────────────
@@ -262,9 +258,6 @@ describe('POST /api/v1/auth/login', () => {
   });
 });
 
-// ─────────────────────────────────────────────
-// NEW: POST /refresh
-// ─────────────────────────────────────────────
 describe('POST /api/v1/auth/refresh', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -274,7 +267,7 @@ describe('POST /api/v1/auth/refresh', () => {
     const token = 'valid-token';
     const mockSession = {
       isRevoked: false,
-      refreshTokenHash: sha256(token), // matches incoming hash
+      refreshTokenHash: sha256(token),
       save: jest.fn(),
     };
     jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
@@ -284,8 +277,8 @@ describe('POST /api/v1/auth/refresh', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.accessToken).toBeDefined();
-    expect(response.body.data.refreshToken).toBeDefined(); // mobile: both in body
-    expect(response.headers['set-cookie']).toBeUndefined(); // mobile: no cookie
+    expect(response.body.data.refreshToken).toBeDefined();
+    expect(response.headers['set-cookie']).toBeUndefined();
     expect(mockSession.save).toHaveBeenCalled();
   });
 
@@ -305,17 +298,16 @@ describe('POST /api/v1/auth/refresh', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.accessToken).toBeDefined();
-    expect(response.body.data.refreshToken).toBeUndefined(); // web: refresh in cookie
-    expect(response.headers['set-cookie']).toBeDefined(); // rotated cookie set
+    expect(response.body.data.refreshToken).toBeUndefined();
+    expect(response.headers['set-cookie']).toBeDefined();
     expect(response.headers['set-cookie'][0]).toContain('refreshToken=');
   });
 
-  // 🚨 SECURITY: end-to-end proof that reuse detection fires and revokes the session
   it('should return 401 on reuse detection and revoke the session in the DB', async () => {
     jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
     const mockSession = {
       isRevoked: false,
-      refreshTokenHash: 'a-hash-from-a-previous-rotation', // ≠ sha256('stolen-token')
+      refreshTokenHash: 'a-hash-from-a-previous-rotation',
       save: jest.fn(),
     };
     jest.spyOn(Session, 'findById').mockResolvedValue(mockSession);
@@ -326,8 +318,6 @@ describe('POST /api/v1/auth/refresh', () => {
 
     expect(response.status).toBe(401);
     expect(response.body.message).toContain('reuse detected');
-
-    // Session revoked BEFORE responding
     expect(mockSession.isRevoked).toBe(true);
     expect(mockSession.revokedAt).toBeInstanceOf(Date);
     expect(mockSession.save).toHaveBeenCalled();
@@ -365,9 +355,6 @@ describe('POST /api/v1/auth/refresh', () => {
   });
 });
 
-// ─────────────────────────────────────────────
-// NEW: GET /me
-// ─────────────────────────────────────────────
 describe('GET /api/v1/auth/me', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -395,13 +382,11 @@ describe('GET /api/v1/auth/me', () => {
       email: 'john@example.com',
       role: 'user',
     });
-    // Proves `Cache-Control: no-store` is set (user data isn't cacheable)
     expect(response.headers['cache-control']).toBe('no-store');
   });
 
   it('should return 401 without a token', async () => {
     const response = await request(app).get('/api/v1/auth/me');
-
     expect(response.status).toBe(401);
     expect(response.body.message).toContain('no token');
   });
@@ -429,6 +414,160 @@ describe('GET /api/v1/auth/me', () => {
 
     expect(response.status).toBe(401);
     expect(response.body.message).toContain('no longer valid');
+  });
+});
+
+// ─────────────────────────────────────────────
+// NEW: GET /sessions
+// ─────────────────────────────────────────────
+describe('GET /api/v1/auth/sessions', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should return 200 with sessions array including isCurrent flag', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
+
+    const mockChain = { sort: jest.fn(), select: jest.fn(), lean: jest.fn() };
+    mockChain.sort.mockReturnValue(mockChain);
+    mockChain.select.mockReturnValue(mockChain);
+    mockChain.lean.mockResolvedValue([
+      {
+        _id: 's1',
+        ip: '127.0.0.1',
+        userAgent: 'Mozilla',
+        createdAt: new Date('2026-11-14T10:00:00Z'),
+        lastUsedAt: new Date('2026-11-14T12:00:00Z'),
+      },
+      {
+        _id: 's2',
+        ip: '203.0.113.1',
+        userAgent: 'iPhone',
+        createdAt: new Date('2026-11-13T10:00:00Z'),
+        lastUsedAt: new Date('2026-11-13T10:00:00Z'),
+      },
+    ]);
+    jest.spyOn(Session, 'find').mockReturnValue(mockChain);
+
+    const response = await request(app)
+      .get('/api/v1/auth/sessions')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.sessions).toHaveLength(2);
+    expect(response.body.data.sessions[0].id).toBe('s1');
+    expect(response.body.data.sessions[0].isCurrent).toBe(true);
+    expect(response.body.data.sessions[1].id).toBe('s2');
+    expect(response.body.data.sessions[1].isCurrent).toBe(false);
+    expect(response.headers['cache-control']).toBe('no-store');
+  });
+
+  it('should return 401 without a token', async () => {
+    const response = await request(app).get('/api/v1/auth/sessions');
+    expect(response.status).toBe(401);
+  });
+});
+
+// ─────────────────────────────────────────────
+// NEW: DELETE /sessions/:id
+// ─────────────────────────────────────────────
+describe('DELETE /api/v1/auth/sessions/:id', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should return 200 when revoking another session', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
+    jest.spyOn(Session, 'findOneAndUpdate').mockResolvedValue({ _id: 's2', isRevoked: true });
+
+    const response = await request(app)
+      .delete('/api/v1/auth/sessions/s2')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.message).toContain('Session revoked');
+  });
+
+  it('should return 400 when trying to revoke the current session', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
+    const findOneAndUpdateSpy = jest.spyOn(Session, 'findOneAndUpdate');
+
+    const response = await request(app)
+      .delete('/api/v1/auth/sessions/s1')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('Cannot revoke the current session');
+    // Guard short-circuits before hitting the DB
+    expect(findOneAndUpdateSpy).not.toHaveBeenCalled();
+  });
+
+  it('should return 404 when the session does not exist', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
+    jest.spyOn(Session, 'findOneAndUpdate').mockResolvedValue(null);
+
+    const response = await request(app)
+      .delete('/api/v1/auth/sessions/nonexistent')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(response.status).toBe(404);
+    expect(response.body.message).toContain('Session not found');
+  });
+
+  it('should return 401 without a token', async () => {
+    const response = await request(app).delete('/api/v1/auth/sessions/s2');
+    expect(response.status).toBe(401);
+  });
+});
+
+// ─────────────────────────────────────────────
+// NEW: DELETE /sessions
+// ─────────────────────────────────────────────
+describe('DELETE /api/v1/auth/sessions', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should revoke all other sessions and return the count', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
+    jest.spyOn(Session, 'updateMany').mockResolvedValue({ modifiedCount: 2 });
+
+    const response = await request(app)
+      .delete('/api/v1/auth/sessions')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.revokedCount).toBe(2);
+
+    // Proves the current session ID is passed to the $ne filter
+    const filter = Session.updateMany.mock.calls[0][0];
+    expect(filter._id).toEqual({ $ne: 's1' });
+  });
+
+  it('should succeed with revokedCount: 0 when there are no other sessions', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
+    jest.spyOn(Session, 'updateMany').mockResolvedValue({ modifiedCount: 0 });
+
+    const response = await request(app)
+      .delete('/api/v1/auth/sessions')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.revokedCount).toBe(0);
+  });
+
+  it('should return 401 without a token', async () => {
+    const response = await request(app).delete('/api/v1/auth/sessions');
+    expect(response.status).toBe(401);
   });
 });
 
