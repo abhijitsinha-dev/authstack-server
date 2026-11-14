@@ -224,6 +224,158 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /api/v1/auth/sessions:
+    get:
+      summary: List active sessions
+      description: |
+        Returns all non-revoked, non-expired sessions for the authenticated
+        user, sorted by most recently used first.
+
+        The session that made the current request is marked with
+        `isCurrent: true` so clients can highlight "This device" in the UI.
+
+        Response is `Cache-Control: no-store` — session data is per-user and
+        must not be cached by proxies.
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of active sessions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionsListResponse'
+              example:
+                success: true
+                data:
+                  sessions:
+                    - id: '6af89c026af425f93f6785f1'
+                      ip: '203.0.113.42'
+                      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120'
+                      createdAt: '2026-11-14T17:36:02.297Z'
+                      lastUsedAt: '2026-11-14T18:05:14.882Z'
+                      isCurrent: true
+                    - id: '6af89c036af425f93f6785f5'
+                      ip: '198.51.100.7'
+                      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)'
+                      createdAt: '2026-11-13T09:14:22.115Z'
+                      lastUsedAt: '2026-11-13T09:14:22.115Z'
+                      isCurrent: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      summary: Revoke all other sessions
+      description: |
+        Revokes every session for the authenticated user **except** the one
+        making the request. Equivalent to "Log out of all other devices" —
+        the caller stays logged in on their current device.
+
+        Returns the number of sessions that were revoked. If the user has no
+        other active sessions, the operation succeeds with `revokedCount: 0`
+        (idempotent — callers don't need to check first).
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Other sessions revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Other sessions revoked.
+                  data:
+                    type: object
+                    properties:
+                      revokedCount:
+                        type: integer
+                        description: Number of sessions revoked (0 if none existed).
+                        example: 3
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/auth/sessions/{id}:
+    delete:
+      summary: Revoke a specific session
+      description: |
+        Revokes a single session by ID — used when the user identifies a
+        device they don't recognize in the sessions list and wants to kick
+        it out without affecting their current device.
+
+        **Cannot revoke the current session** via this endpoint. That's
+        `POST /logout`'s job — it also clears the refresh cookie, which this
+        endpoint doesn't. Attempting to revoke the current session returns
+        `400`.
+
+        **Anti-enumeration:** returns `404` for both non-existent session IDs
+        and sessions belonging to other users. An attacker cannot use this
+        endpoint to probe whether a session ID exists.
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Session ID (MongoDB ObjectId).
+          example: '6af89c036af425f93f6785f5'
+      responses:
+        '200':
+          description: Session revoked successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Session revoked successfully.
+        '400':
+          description: Attempted to revoke the current session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Cannot revoke the current session. Use logout instead.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Session not found (or belongs to another user).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Session not found
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /api/v1/auth/logout:
     post:
       summary: Log out of the current device

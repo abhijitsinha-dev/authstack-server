@@ -106,3 +106,52 @@ components:
           properties:
             user:
               $ref: '#/components/schemas/UserResponse'
+
+    SessionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: MongoDB ObjectId of the session.
+          example: '6af89c026af425f93f6785f1'
+        ip:
+          type: string
+          nullable: true
+          description: IP address from which the session was established.
+          example: '203.0.113.42'
+        userAgent:
+          type: string
+          nullable: true
+          description: User-Agent header captured at login.
+          example: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)'
+        createdAt:
+          type: string
+          format: date-time
+          description: When the session was created (login time).
+        lastUsedAt:
+          type: string
+          format: date-time
+          description: |
+            When the session last refreshed its access token. Clients can
+            render "Active X minutes ago" from this. Sessions created before
+            this field existed may briefly have a missing value until their
+            first refresh.
+        isCurrent:
+          type: boolean
+          description: |
+            True for the session that made the current request. Clients use
+            this to disable the revoke button on the current device row.
+
+    SessionsListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            sessions:
+              type: array
+              items:
+                $ref: '#/components/schemas/SessionResponse'

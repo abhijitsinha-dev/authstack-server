@@ -2,7 +2,7 @@
 
 Backend API for the authstack project — an Express + MongoDB service built for serverless deployment on Vercel, with a dedicated BullMQ worker for background processing.
 
-> **Status:** Authentication flow (signup, login, refresh, logout, current user) and password reset are fully implemented and tested. Core auth, secure JWT session management, and modular API documentation are production-ready.
+> **Status:** Authentication flow (signup, login, refresh, logout, current user, session management) and password reset are fully implemented and tested. Core auth, secure JWT session management, and modular API documentation are production-ready.
 
 ---
 
@@ -11,8 +11,8 @@ Backend API for the authstack project — an Express + MongoDB service built for
 - **Authentication:** Secure signup (OTP), login, logout, refresh, and password reset flows with JWT Access/Refresh tokens.
 - **Refresh Token Rotation:** Single-use refresh tokens with automatic reuse detection. A replayed (already-rotated) token revokes the entire session — detects token theft.
 - **Current User:** `GET /me` for cold-start hydration, so clients can restore session state without a full login round-trip.
+- **Session Management:** List all active sessions across devices, revoke a specific session, or log out of all other devices. Detects which session is making the current request so the UI can highlight "This device".
 - **Password Reset:** Forgot-password + reset-password with 6-digit OTP via email. All active sessions are revoked on successful reset.
-- **Multi-Device Sessions:** Tracks active sessions with device info and supports per-session revocation.
 - **Background Jobs:** BullMQ + Upstash Redis for asynchronous email delivery (signup, password reset).
 - **Defense in Depth:** IP-based rate limiting (Upstash), per-email cooldowns, and OTP brute-force lockout (max 5 attempts).
 - **Anti-Enumeration:** `forgot-password` returns `200 OK` regardless of whether the email exists — no timing or status oracle.
@@ -25,6 +25,7 @@ Backend API for the authstack project — an Express + MongoDB service built for
 
 - **Atomic OTP consumption** — `findOneAndDelete` prevents concurrent-replay password hijacks.
 - **Refresh token reuse detection** — replaying a rotated token revokes the session; detects leaked or cached tokens.
+- **Session IDOR prevention** — session revoke endpoints scope queries by `user`, so a user cannot revoke another user's session even with a valid ID.
 - **Two-tier OTP hashing** — bcrypt for the 6-digit OTP (slow, prevents offline brute-force); SHA-256 for the high-entropy refresh token (fast, allows DB lookup).
 - **HTML-escaped emails** — user-supplied `name` is escaped before interpolation, preventing markup injection in transactional emails.
 - **Session rotation on reset** — every successful password reset revokes all prior sessions.
@@ -80,6 +81,7 @@ npm run dev
 
 # 5. Run the Worker (Terminal 2)
 npm run worker
+
 ```
 
 Verify the API is running:
@@ -174,6 +176,27 @@ All business logic routes are versioned under `/api/v1`. Rate limits shown below
 - **Rate Limit:** 60 req/min.
 - **Errors:** `401` (unauthorized, session revoked, or user deleted), `429`, `500`.
 
+**`GET /sessions`**
+
+- **Requires:** Bearer Token
+- **Description:** Returns all active (non-revoked, non-expired) sessions for the authenticated user, sorted by `lastUsedAt` descending. The session making the request is marked with `isCurrent: true` so the UI can highlight "This device". Response is `Cache-Control: no-store`.
+- **Rate Limit:** 60 req/min.
+- **Errors:** `401` (unauthorized), `429` (rate limit), `500`.
+
+**`DELETE /sessions/:id`**
+
+- **Requires:** Bearer Token
+- **Description:** Revokes a single session by ID — "log out my old laptop" without affecting other devices. **Cannot revoke the current session** (`400`) — use `/logout` for that. Returns `404` for both non-existent IDs and sessions owned by other users (anti-enumeration + IDOR prevention).
+- **Rate Limit:** 10 req/min.
+- **Errors:** `400` (current session), `401` (unauthorized), `404` (not found), `429` (rate limit), `500`.
+
+**`DELETE /sessions`**
+
+- **Requires:** Bearer Token
+- **Description:** Revokes all sessions **except the current one** — "log out everywhere else". Returns `revokedCount` so the UI can confirm ("3 sessions revoked"). Idempotent — returns `revokedCount: 0` if no other sessions exist.
+- **Rate Limit:** 5 req/min.
+- **Errors:** `401` (unauthorized), `429` (rate limit), `500`.
+
 **`POST /logout`**
 
 - **Requires:** Bearer Token
@@ -256,7 +279,7 @@ server/
 │   ├── models/                   # Mongoose schemas
 │   │   ├── user.model.js
 │   │   ├── otp.model.js          # purpose: 'signup' | 'reset' + compound index
-│   │   └── session.model.js      # isRevoked + revokedAt for session revocation
+│   │   └── session.model.js      # isRevoked + revokedAt + lastUsedAt
 │   ├── queues/                   # BullMQ queue definitions
 │   ├── routes/                   # Express routers (code-only, no JSDoc)
 │   ├── services/                 # Business logic (Auth, Email)
@@ -314,3 +337,7 @@ We welcome contributions of all kinds! Please read our **[Contributing Guide](./
 ## License
 
 This project is open source under the **ISC License** — see [LICENSE](./LICENSE) for details.
+
+```
+
+```
