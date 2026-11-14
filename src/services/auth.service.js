@@ -381,6 +381,65 @@ export const refreshTokens = async ({ refreshToken }) => {
   return { accessToken, refreshToken: newRefreshToken };
 };
 
+/**
+ * Change the authenticated user's password.
+ *
+ * Requires the current password (defense against a stolen access token —
+ * proof of identity, not just proof of session) and revokes all OTHER
+ * sessions on success (defense against a stolen device — the legitimate
+ * user stays logged in where they're doing the change).
+ *
+ * Not idempotent in the classical sense — calling twice with the same
+ * newPassword would fail the second time because `currentPassword` would
+ * no longer match. That's expected: password changes are single-use events.
+ */
+export const changePassword = async ({
+  userId,
+  currentSessionId,
+  currentPassword,
+  newPassword,
+}) => {
+  // 1. Fetch the user WITH the password field (excluded by default via select: false)
+  const user = await User.findById(userId).select('+password');
+  if (!user) {
+    // Session references a deleted user — same treatment as getCurrentUser
+    throw new ApiError(401, 'Session is no longer valid. Please log in again.');
+  }
+
+  // 2. Verify the current password BEFORE the new-vs-old check.
+  //    Ordering matters: if currentPassword is wrong, telling the user
+  //    "must be different from current" is misleading (their current isn't
+  //    what they think it is). Verify first, then check sameness.
+  const isMatch = await bcrypt.compare(currentPassword, user.password);
+  if (!isMatch) {
+    throw new ApiError(401, 'Current password is incorrect.');
+  }
+
+  // 3. Reject no-op changes — the user expects "changed" to mean something changed
+  if (currentPassword === newPassword) {
+    throw new ApiError(400, 'New password must be different from current password.');
+  }
+
+  // 4. Update password (the model pre-save hook hashes it)
+  user.password = newPassword;
+  await user.save();
+
+  // 5. Revoke all OTHER sessions, keep the current one
+  //    This is the entire reason change-password exists as a security action —
+  //    if a device was stolen and its session is active, changing the password
+  //    kicks the attacker out while keeping the legitimate user logged in.
+  const result = await Session.updateMany(
+    { user: userId, _id: { $ne: currentSessionId }, isRevoked: false },
+    { isRevoked: true, revokedAt: new Date() }
+  );
+
+  logger.info(
+    `Password changed for ${user.email}. Revoked ${result.modifiedCount} other session(s).`
+  );
+
+  return { revokedCount: result.modifiedCount };
+};
+
 export const requestPasswordReset = async ({ email }) => {
   const user = await User.findOne({ email });
 

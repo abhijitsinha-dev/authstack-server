@@ -12,6 +12,7 @@ jest.unstable_mockModule('../../src/services/auth.service.js', () => ({
   listUserSessions: jest.fn(),
   revokeSession: jest.fn(),
   revokeOtherSessions: jest.fn(),
+  changePassword: jest.fn(),
   requestPasswordReset: jest.fn(),
   resetPassword: jest.fn(),
 }));
@@ -28,6 +29,7 @@ const {
   listUserSessions,
   revokeSession,
   revokeOtherSessions,
+  changePassword,
   requestPasswordReset,
   resetPassword,
 } = await import('../../src/services/auth.service.js');
@@ -42,6 +44,7 @@ const {
   getSessions,
   revokeSessionController,
   revokeOtherSessionsController,
+  changePasswordController,
   logout,
   forgotPassword,
   resetPasswordController,
@@ -522,6 +525,88 @@ describe('auth.controller', () => {
       revokeOtherSessions.mockRejectedValue(new Error('DB unavailable'));
 
       await expect(revokeOtherSessionsController(req, res)).rejects.toThrow('DB unavailable');
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // changePasswordController
+  // ─────────────────────────────────────────────
+  describe('changePasswordController', () => {
+    beforeEach(() => {
+      req.user = { id: 'u1', sessionId: 's1', role: 'user' };
+      req.body = {
+        currentPassword: 'OldPassword123!',
+        newPassword: 'NewPassword456!',
+        confirmPassword: 'NewPassword456!',
+      };
+    });
+
+    it('should pass all four params to the service and return 200 with revokedCount', async () => {
+      changePassword.mockResolvedValue({ revokedCount: 2 });
+
+      await changePasswordController(req, res);
+
+      // All four params matter: userId + currentSessionId for revocation
+      // scope, currentPassword for identity verification, newPassword for update
+      expect(changePassword).toHaveBeenCalledWith({
+        userId: 'u1',
+        currentSessionId: 's1',
+        currentPassword: 'OldPassword123!',
+        newPassword: 'NewPassword456!',
+      });
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        message: 'Password changed. Other devices have been logged out.',
+        data: { revokedCount: 2 },
+      });
+    });
+
+    it('should use the generic success message when revokedCount is 0', async () => {
+      // User had only their current session — nothing to revoke
+      changePassword.mockResolvedValue({ revokedCount: 0 });
+
+      await changePasswordController(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        message: 'Password changed successfully.',
+        data: { revokedCount: 0 },
+      });
+    });
+
+    it('should ignore confirmPassword when calling the service', async () => {
+      // confirmPassword is a Joi-layer concern; the service never sees it
+      changePassword.mockResolvedValue({ revokedCount: 0 });
+
+      await changePasswordController(req, res);
+
+      const callArg = changePassword.mock.calls[0][0];
+      expect(callArg.confirmPassword).toBeUndefined();
+    });
+
+    it('should propagate service errors (wrong current password → 401)', async () => {
+      changePassword.mockRejectedValue(new Error('Current password is incorrect.'));
+
+      await expect(changePasswordController(req, res)).rejects.toThrow(
+        'Current password is incorrect.'
+      );
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
+    });
+
+    it('should propagate service errors (same password → 400)', async () => {
+      changePassword.mockRejectedValue(
+        new Error('New password must be different from current password.')
+      );
+
+      await expect(changePasswordController(req, res)).rejects.toThrow(
+        'New password must be different'
+      );
       expect(res.status).not.toHaveBeenCalled();
       expect(res.json).not.toHaveBeenCalled();
     });

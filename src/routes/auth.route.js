@@ -10,6 +10,7 @@ import {
   getSessions,
   revokeSessionController,
   revokeOtherSessionsController,
+  changePasswordController,
   forgotPassword,
   resetPasswordController,
 } from '../controllers/auth.controller.js';
@@ -18,6 +19,7 @@ import {
   resendOtpSchema,
   verifyOtpSchema,
   loginSchema,
+  changePasswordSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
 } from '../validators/auth.validator.js';
@@ -42,7 +44,6 @@ router.route('/signup/request-otp').post(
   requestOtp
 );
 
-// 1 per 20s aligns with the per-email cooldown in the service layer
 router.route('/signup/resend-otp').post(
   rateLimit({
     limit: isProduction ? 1 : DEV_LIMIT,
@@ -76,10 +77,6 @@ router.route('/login').post(
   login
 );
 
-// No `protect`: the access token is expired by definition — that's why the
-// client is calling. No `validate`: the JWT signature IS the validation.
-// 30/min because this fires automatically on every cold start and every
-// 15-minute access-token expiry — high-frequency by design.
 router.route('/refresh').post(
   rateLimit({
     limit: isProduction ? 30 : DEV_LIMIT,
@@ -89,10 +86,6 @@ router.route('/refresh').post(
   refreshTokenController
 );
 
-// Protected: `protect` validates the access token + session, then `getMe`
-// does a second DB read for the full user profile. 60/min is generous for
-// real clients (called on cold start and profile views) but caps the damage
-// from a stolen access token being replayed.
 router.route('/me').get(
   rateLimit({
     limit: isProduction ? 60 : DEV_LIMIT,
@@ -103,8 +96,6 @@ router.route('/me').get(
   getMe
 );
 
-// Session management — list and bulk-revoke on the same path, individual
-// revoke by ID on the sub-path. All protected.
 router
   .route('/sessions')
   .get(
@@ -136,8 +127,6 @@ router.route('/sessions/:id').delete(
   revokeSessionController
 );
 
-// Rate limit BEFORE protect: unauthenticated spam should also be capped
-// (protect does a Session.findById lookup on every valid-signature token).
 router.route('/logout').post(
   rateLimit({
     limit: isProduction ? 20 : DEV_LIMIT,
@@ -149,10 +138,22 @@ router.route('/logout').post(
 );
 
 // ─────────────────────────────────────────────
-// Password reset
+// Password operations
 // ─────────────────────────────────────────────
-// See ADR-003: per-IP rate limit (here) + per-email 20s cooldown (service layer)
-// cover both single-IP spam and VPN-hopping inbox attacks. Neither alone is enough.
+// Tighter rate limit than most endpoints — a stolen access token gives an
+// attacker at most 5 attempts per 15 min to guess the current password,
+// which combined with bcrypt's ~100ms cost makes brute-force infeasible.
+router.route('/change-password').post(
+  rateLimit({
+    limit: isProduction ? 5 : DEV_LIMIT,
+    window: '15 m',
+    prefix: 'ratelimit:change-password',
+  }),
+  protect,
+  validate(changePasswordSchema),
+  changePasswordController
+);
+
 router.route('/forgot-password').post(
   rateLimit({
     limit: isProduction ? 3 : DEV_LIMIT,

@@ -9,6 +9,7 @@ import {
   listUserSessions,
   revokeSession,
   revokeOtherSessions,
+  changePassword,
   requestPasswordReset,
   resetPassword,
 } from '../services/auth.service.js';
@@ -66,11 +67,6 @@ export const login = async (req, res) => {
 
 /**
  * Rotate the refresh token and return a new access token.
- *
- * Reads the refresh token from the HttpOnly cookie (web) or the request body
- * (mobile). Returns the new access token in the JSON body in both cases.
- * The new refresh token is either set as a cookie (web) or returned in the
- * body (mobile) — the client MUST persist it, since the old one is now invalid.
  */
 export const refreshTokenController = async (req, res) => {
   const fromCookie = !!req.cookies?.refreshToken;
@@ -79,14 +75,12 @@ export const refreshTokenController = async (req, res) => {
   const { accessToken, refreshToken } = await refreshTokens({ refreshToken: token });
 
   if (!fromCookie) {
-    // Mobile: both tokens in the body; client stores refresh in SecureStore
     return res.status(200).json({
       success: true,
       data: { accessToken, refreshToken },
     });
   }
 
-  // Web: rotate the HttpOnly cookie, return only the access token in the body
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -102,15 +96,10 @@ export const refreshTokenController = async (req, res) => {
 
 /**
  * Return the authenticated user's profile.
- *
- * Used by clients on cold start to hydrate the UI without a full
- * login round-trip. Response shape matches the `user` field returned by
- * /login and /verify-otp, so clients can share the same parser.
  */
 export const getMe = async (req, res) => {
   const user = await getCurrentUser({ userId: req.user.id });
 
-  // User data must not be cached by proxies or shared caches — it's per-user.
   res.setHeader('Cache-Control', 'no-store');
 
   res.status(200).json({
@@ -128,9 +117,6 @@ export const getMe = async (req, res) => {
 
 /**
  * List all active sessions for the authenticated user.
- *
- * Includes the current session (marked `isCurrent: true`) so the UI can
- * disable the revoke button on that row.
  */
 export const getSessions = async (req, res) => {
   const sessions = await listUserSessions({
@@ -147,9 +133,7 @@ export const getSessions = async (req, res) => {
 };
 
 /**
- * Revoke a specific session by ID (e.g., "log out my old laptop").
- *
- * The current session is rejected — use `/logout` for that.
+ * Revoke a specific session by ID.
  */
 export const revokeSessionController = async (req, res) => {
   await revokeSession({
@@ -165,7 +149,7 @@ export const revokeSessionController = async (req, res) => {
 };
 
 /**
- * Revoke all sessions except the current one (e.g., "log out everywhere else").
+ * Revoke all sessions except the current one.
  */
 export const revokeOtherSessionsController = async (req, res) => {
   const { revokedCount } = await revokeOtherSessions({
@@ -176,6 +160,33 @@ export const revokeOtherSessionsController = async (req, res) => {
   res.status(200).json({
     success: true,
     message: 'Other sessions revoked.',
+    data: { revokedCount },
+  });
+};
+
+/**
+ * Change the authenticated user's password.
+ *
+ * Requires currentPassword (proof of identity, not just session) and
+ * revokes all OTHER sessions on success. The current session stays active
+ * so the user isn't logged out of the device where they're doing this.
+ */
+export const changePasswordController = async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  const { revokedCount } = await changePassword({
+    userId: req.user.id,
+    currentSessionId: req.user.sessionId,
+    currentPassword,
+    newPassword,
+  });
+
+  res.status(200).json({
+    success: true,
+    message:
+      revokedCount > 0
+        ? 'Password changed. Other devices have been logged out.'
+        : 'Password changed successfully.',
     data: { revokedCount },
   });
 };
