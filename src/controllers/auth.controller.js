@@ -6,6 +6,9 @@ import {
   logoutUser,
   refreshTokens,
   getCurrentUser,
+  listUserSessions,
+  revokeSession,
+  revokeOtherSessions,
   requestPasswordReset,
   resetPassword,
 } from '../services/auth.service.js';
@@ -120,6 +123,60 @@ export const getMe = async (req, res) => {
         role: user.role,
       },
     },
+  });
+};
+
+/**
+ * List all active sessions for the authenticated user.
+ *
+ * Includes the current session (marked `isCurrent: true`) so the UI can
+ * disable the revoke button on that row.
+ */
+export const getSessions = async (req, res) => {
+  const sessions = await listUserSessions({
+    userId: req.user.id,
+    currentSessionId: req.user.sessionId,
+  });
+
+  res.setHeader('Cache-Control', 'no-store');
+
+  res.status(200).json({
+    success: true,
+    data: { sessions },
+  });
+};
+
+/**
+ * Revoke a specific session by ID (e.g., "log out my old laptop").
+ *
+ * The current session is rejected — use `/logout` for that.
+ */
+export const revokeSessionController = async (req, res) => {
+  await revokeSession({
+    sessionId: req.params.id,
+    userId: req.user.id,
+    currentSessionId: req.user.sessionId,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Session revoked successfully.',
+  });
+};
+
+/**
+ * Revoke all sessions except the current one (e.g., "log out everywhere else").
+ */
+export const revokeOtherSessionsController = async (req, res) => {
+  const { revokedCount } = await revokeOtherSessions({
+    userId: req.user.id,
+    currentSessionId: req.user.sessionId,
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Other sessions revoked.',
+    data: { revokedCount },
   });
 };
 

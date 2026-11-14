@@ -7,8 +7,11 @@ jest.unstable_mockModule('../../src/services/auth.service.js', () => ({
   verifySignupOtp: jest.fn(),
   loginUser: jest.fn(),
   logoutUser: jest.fn(),
-  refreshTokens: jest.fn(), // 👈 NEW
-  getCurrentUser: jest.fn(), // 👈 NEW
+  refreshTokens: jest.fn(),
+  getCurrentUser: jest.fn(),
+  listUserSessions: jest.fn(),
+  revokeSession: jest.fn(),
+  revokeOtherSessions: jest.fn(),
   requestPasswordReset: jest.fn(),
   resetPassword: jest.fn(),
 }));
@@ -22,6 +25,9 @@ const {
   logoutUser,
   refreshTokens,
   getCurrentUser,
+  listUserSessions,
+  revokeSession,
+  revokeOtherSessions,
   requestPasswordReset,
   resetPassword,
 } = await import('../../src/services/auth.service.js');
@@ -33,6 +39,9 @@ const {
   login,
   refreshTokenController,
   getMe,
+  getSessions,
+  revokeSessionController,
+  revokeOtherSessionsController,
   logout,
   forgotPassword,
   resetPasswordController,
@@ -48,7 +57,8 @@ describe('auth.controller', () => {
     req = {
       body: {},
       headers: {},
-      cookies: {}, // 👈 NEW — refreshTokenController reads req.cookies
+      cookies: {},
+      params: {},
       ip: '127.0.0.1',
       user: { sessionId: 'fake-session-id' },
     };
@@ -58,7 +68,7 @@ describe('auth.controller', () => {
       json: jest.fn(),
       cookie: jest.fn(),
       clearCookie: jest.fn(),
-      setHeader: jest.fn(), // 👈 NEW — getMe sets Cache-Control
+      setHeader: jest.fn(),
     };
   });
 
@@ -261,7 +271,7 @@ describe('auth.controller', () => {
   });
 
   // ─────────────────────────────────────────────
-  // NEW: refreshTokenController
+  // refreshTokenController
   // ─────────────────────────────────────────────
   describe('refreshTokenController', () => {
     beforeEach(() => {
@@ -330,7 +340,7 @@ describe('auth.controller', () => {
   });
 
   // ─────────────────────────────────────────────
-  // NEW: getMe
+  // getMe
   // ─────────────────────────────────────────────
   describe('getMe', () => {
     beforeEach(() => {
@@ -371,6 +381,147 @@ describe('auth.controller', () => {
 
       await expect(getMe(req, res)).rejects.toThrow('Session is no longer valid');
       expect(res.setHeader).not.toHaveBeenCalled();
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // getSessions
+  // ─────────────────────────────────────────────
+  describe('getSessions', () => {
+    beforeEach(() => {
+      req.user = { id: 'u1', sessionId: 's1', role: 'user' };
+    });
+
+    it('should pass userId and currentSessionId to the service and return 200', async () => {
+      const mockSessions = [
+        {
+          id: 's1',
+          ip: '127.0.0.1',
+          userAgent: 'Mozilla/5.0',
+          createdAt: '2026-11-14T10:00:00Z',
+          lastUsedAt: '2026-11-14T12:00:00Z',
+          isCurrent: true,
+        },
+        {
+          id: 's2',
+          ip: '203.0.113.1',
+          userAgent: 'Mozilla/5.0 (iPhone)',
+          createdAt: '2026-11-13T10:00:00Z',
+          lastUsedAt: '2026-11-13T10:00:00Z',
+          isCurrent: false,
+        },
+      ];
+      listUserSessions.mockResolvedValue(mockSessions);
+
+      await getSessions(req, res);
+
+      expect(listUserSessions).toHaveBeenCalledWith({
+        userId: 'u1',
+        currentSessionId: 's1',
+      });
+
+      // Cache-Control prevents per-user data from being cached by proxies
+      expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        data: { sessions: mockSessions },
+      });
+    });
+
+    it('should propagate service errors', async () => {
+      listUserSessions.mockRejectedValue(new Error('DB unavailable'));
+
+      await expect(getSessions(req, res)).rejects.toThrow('DB unavailable');
+      expect(res.setHeader).not.toHaveBeenCalled();
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // revokeSessionController
+  // ─────────────────────────────────────────────
+  describe('revokeSessionController', () => {
+    beforeEach(() => {
+      req.user = { id: 'u1', sessionId: 's1', role: 'user' };
+      req.params = { id: 's2' };
+    });
+
+    it('should pass all three scoping params to the service and return 200', async () => {
+      revokeSession.mockResolvedValue({});
+
+      await revokeSessionController(req, res);
+
+      expect(revokeSession).toHaveBeenCalledWith({
+        sessionId: 's2',
+        userId: 'u1',
+        currentSessionId: 's1',
+      });
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        message: 'Session revoked successfully.',
+      });
+    });
+
+    it('should propagate service errors (404, 400 for current, etc.)', async () => {
+      revokeSession.mockRejectedValue(new Error('Session not found'));
+
+      await expect(revokeSessionController(req, res)).rejects.toThrow('Session not found');
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // revokeOtherSessionsController
+  // ─────────────────────────────────────────────
+  describe('revokeOtherSessionsController', () => {
+    beforeEach(() => {
+      req.user = { id: 'u1', sessionId: 's1', role: 'user' };
+    });
+
+    it('should pass userId and currentSessionId, return 200 with revokedCount', async () => {
+      revokeOtherSessions.mockResolvedValue({ revokedCount: 3 });
+
+      await revokeOtherSessionsController(req, res);
+
+      expect(revokeOtherSessions).toHaveBeenCalledWith({
+        userId: 'u1',
+        currentSessionId: 's1',
+      });
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        message: 'Other sessions revoked.',
+        data: { revokedCount: 3 },
+      });
+    });
+
+    it('should handle zero revoked sessions (idempotent)', async () => {
+      // No other sessions — the operation still succeeds
+      revokeOtherSessions.mockResolvedValue({ revokedCount: 0 });
+
+      await revokeOtherSessionsController(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        message: 'Other sessions revoked.',
+        data: { revokedCount: 0 },
+      });
+    });
+
+    it('should propagate service errors', async () => {
+      revokeOtherSessions.mockRejectedValue(new Error('DB unavailable'));
+
+      await expect(revokeOtherSessionsController(req, res)).rejects.toThrow('DB unavailable');
       expect(res.status).not.toHaveBeenCalled();
       expect(res.json).not.toHaveBeenCalled();
     });

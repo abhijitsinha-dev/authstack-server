@@ -242,6 +242,91 @@ export const logoutUser = async (sessionId) => {
 };
 
 /**
+ * List all active sessions for a user.
+ *
+ * "Active" = not revoked AND not expired. The `expiresAt` check matters
+ * because the MongoDB TTL index lags ~60s — an expired-but-not-yet-cleaned
+ * session would otherwise appear in the list.
+ *
+ * Returns a client-friendly shape: no `refreshTokenHash`, no `__v`, no
+ * internal ObjectIds — just what the sessions UI needs to render.
+ */
+export const listUserSessions = async ({ userId, currentSessionId }) => {
+  const sessions = await Session.find({
+    user: userId,
+    isRevoked: false,
+    expiresAt: { $gt: new Date() },
+  })
+    .sort({ lastUsedAt: -1 }) // most recently used first
+    .select('-refreshTokenHash -__v') // never expose the hash
+    .lean();
+
+  return sessions.map((s) => ({
+    id: s._id.toString(),
+    ip: s.ip,
+    userAgent: s.userAgent,
+    createdAt: s.createdAt,
+    lastUsedAt: s.lastUsedAt,
+    // The client can't compute this itself — it doesn't know its own session ID.
+    isCurrent: s._id.toString() === currentSessionId,
+  }));
+};
+
+/**
+ * Revoke a single session by ID.
+ *
+ * Scoped by `user` to prevent IDOR — without it, any authenticated user
+ * could revoke another user's session if they guessed the ObjectId. Returns
+ * 404 (not 403) when the session doesn't belong to the caller, to avoid
+ * leaking whether the ID exists.
+ */
+export const revokeSession = async ({ sessionId, userId, currentSessionId }) => {
+  // Refuse to let the client revoke their own current session via this endpoint.
+  // That's `POST /logout`'s job — it also clears the refresh cookie, which this
+  // endpoint doesn't. Letting this succeed would leave a stale cookie that
+  // triggers "reuse detected" on the next refresh.
+  if (sessionId === currentSessionId) {
+    throw new ApiError(400, 'Cannot revoke the current session. Use logout instead.');
+  }
+
+  const session = await Session.findOneAndUpdate(
+    { _id: sessionId, user: userId, isRevoked: false, expiresAt: { $gt: new Date() } },
+    { isRevoked: true, revokedAt: new Date() },
+    { returnDocument: 'after' }
+  );
+
+  if (!session) {
+    // Covers both "doesn't exist" and "belongs to another user" — no info leak.
+    throw new ApiError(404, 'Session not found');
+  }
+
+  return session;
+};
+
+/**
+ * Revoke every session for the user except the current one.
+ *
+ * The `_id: { $ne: currentSessionId }` filter is the whole feature — without
+ * it, this is "log out everywhere" and the caller loses their own session.
+ *
+ * Returns a count so the client can show meaningful feedback ("3 sessions
+ * revoked") instead of a silent success.
+ */
+export const revokeOtherSessions = async ({ userId, currentSessionId }) => {
+  const result = await Session.updateMany(
+    {
+      user: userId,
+      _id: { $ne: currentSessionId },
+      isRevoked: false,
+      expiresAt: { $gt: new Date() },
+    },
+    { isRevoked: true, revokedAt: new Date() }
+  );
+
+  return { revokedCount: result.modifiedCount };
+};
+
+/**
  * Rotate the refresh token and issue a new access token.
  *
  * The refresh token is single-use: each call invalidates the previous one

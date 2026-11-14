@@ -7,6 +7,9 @@ import {
   logout,
   refreshTokenController,
   getMe,
+  getSessions,
+  revokeSessionController,
+  revokeOtherSessionsController,
   forgotPassword,
   resetPasswordController,
 } from '../controllers/auth.controller.js';
@@ -98,6 +101,39 @@ router.route('/me').get(
   }),
   protect,
   getMe
+);
+
+// Session management — list and bulk-revoke on the same path, individual
+// revoke by ID on the sub-path. All protected.
+router
+  .route('/sessions')
+  .get(
+    rateLimit({
+      limit: isProduction ? 60 : DEV_LIMIT,
+      window: '1 m',
+      prefix: 'ratelimit:sessions-list',
+    }),
+    protect,
+    getSessions
+  )
+  .delete(
+    rateLimit({
+      limit: isProduction ? 5 : DEV_LIMIT,
+      window: '1 m',
+      prefix: 'ratelimit:sessions-revoke-others',
+    }),
+    protect,
+    revokeOtherSessionsController
+  );
+
+router.route('/sessions/:id').delete(
+  rateLimit({
+    limit: isProduction ? 10 : DEV_LIMIT,
+    window: '1 m',
+    prefix: 'ratelimit:sessions-revoke-one',
+  }),
+  protect,
+  revokeSessionController
 );
 
 // Rate limit BEFORE protect: unauthenticated spam should also be capped
