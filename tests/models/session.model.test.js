@@ -55,7 +55,7 @@ describe('Session Model', () => {
   });
 
   // ─────────────────────────────────────────────
-  // NEW: revokedAt field (added in the password-reset PR)
+  // revokedAt field (added in the password-reset PR)
   //
   // Session revocation is written by:
   //   - logoutUser (single session)
@@ -126,5 +126,22 @@ describe('Session Model', () => {
 
     expect(active).toBe(0);
     expect(revoked).toBe(3);
+  });
+
+  // ─────────────────────────────────────────────
+  // lastUsedAt field
+  //
+  // Set on creation via the schema default (Date.now function reference).
+  // Updated on every successful /refresh by refreshTokens().
+  // Used by the sessions UI ("Active 5 min ago") and dormant-session cleanup.
+  // ─────────────────────────────────────────────
+  it('should default lastUsedAt to the current time on creation', async () => {
+    const before = Date.now();
+    const session = await Session.create(validSession());
+    const after = Date.now();
+
+    expect(session.lastUsedAt).toBeInstanceOf(Date);
+    expect(session.lastUsedAt.getTime()).toBeGreaterThanOrEqual(before);
+    expect(session.lastUsedAt.getTime()).toBeLessThanOrEqual(after);
   });
 });

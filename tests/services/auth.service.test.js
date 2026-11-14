@@ -7,7 +7,7 @@ import { jest } from '@jest/globals';
 jest.unstable_mockModule('../../src/models/user.model.js', () => ({
   default: {
     findOne: jest.fn(),
-    findById: jest.fn(), // 👈 NEW — used by getCurrentUser
+    findById: jest.fn(),
     create: jest.fn(),
     deleteOne: jest.fn(),
   },
@@ -26,7 +26,7 @@ jest.unstable_mockModule('../../src/models/otp.model.js', () => ({
 jest.unstable_mockModule('../../src/models/session.model.js', () => ({
   default: {
     create: jest.fn(),
-    findById: jest.fn(), // 👈 NEW — used by refreshTokens
+    findById: jest.fn(),
     findByIdAndUpdate: jest.fn(),
     updateMany: jest.fn(),
   },
@@ -50,7 +50,7 @@ jest.unstable_mockModule('bcryptjs', () => ({
 }));
 
 jest.unstable_mockModule('jsonwebtoken', () => ({
-  default: { verify: jest.fn() }, // 👈 NEW — refreshTokens calls jwt.verify
+  default: { verify: jest.fn() },
 }));
 
 jest.unstable_mockModule('../../src/utils/jwt.js', () => ({
@@ -64,7 +64,7 @@ jest.unstable_mockModule('validator/lib/isStrongPassword.js', () => ({
 }));
 
 jest.unstable_mockModule('../../src/config/logger.js', () => ({
-  logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() }, // 👈 NEW — warn used in refreshTokens
+  logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
 }));
 
 // ─────────────────────────────────────────────
@@ -85,8 +85,8 @@ const {
   verifySignupOtp,
   loginUser,
   logoutUser,
-  refreshTokens, // 👈 NEW
-  getCurrentUser, // 👈 NEW
+  refreshTokens,
+  getCurrentUser,
   requestPasswordReset,
   resetPassword,
 } = await import('../../src/services/auth.service.js');
@@ -358,7 +358,7 @@ describe('auth.service', () => {
   });
 
   // ─────────────────────────────────────────────
-  // NEW: refreshTokens
+  // refreshTokens
   // ─────────────────────────────────────────────
   describe('refreshTokens', () => {
     const validToken = 'valid-refresh-token';
@@ -418,31 +418,72 @@ describe('auth.service', () => {
       expect(mockSession.save).toHaveBeenCalled();
     });
 
-    it('should rotate tokens and update the stored hash on success', async () => {
+    it('should rotate tokens, update the hash, and set lastUsedAt on success', async () => {
       jwt.verify.mockReturnValue(decodedPayload);
       const mockSession = {
         isRevoked: false,
-        refreshTokenHash: 'fake-hash', // matches hashToken mock output for any input
+        refreshTokenHash: 'fake-hash',
         save: jest.fn(),
       };
       Session.findById.mockResolvedValue(mockSession);
 
+      const before = Date.now();
       const result = await refreshTokens({ refreshToken: validToken });
+      const after = Date.now();
 
       expect(result.accessToken).toBe('fake-access-token');
       expect(result.refreshToken).toBe('fake-refresh-token');
-
-      // Hash was updated (still 'fake-hash' because the mock can't distinguish inputs,
-      // but `save()` was called — proving rotation happened)
       expect(mockSession.save).toHaveBeenCalled();
-
-      // Session was NOT revoked — successful rotation
       expect(mockSession.isRevoked).toBe(false);
+
+      // lastUsedAt was set to a fresh timestamp
+      expect(mockSession.lastUsedAt).toBeInstanceOf(Date);
+      expect(mockSession.lastUsedAt.getTime()).toBeGreaterThanOrEqual(before);
+      expect(mockSession.lastUsedAt.getTime()).toBeLessThanOrEqual(after);
+    });
+
+    // 📌 DESIGN: lastUsedAt is NOT throttled — the field advances on every
+    // refresh because `session.save()` already runs for hash rotation, so the
+    // extra field costs nothing. If someone later "optimizes" this with a
+    // throttle, this test fails and forces a design conversation.
+    it('should advance lastUsedAt on every refresh (no throttle)', async () => {
+      jwt.verify.mockReturnValue(decodedPayload);
+      const recentTimestamp = new Date(Date.now() - 2 * 60 * 1000); // 2 min ago
+      const mockSession = {
+        isRevoked: false,
+        refreshTokenHash: 'fake-hash',
+        lastUsedAt: recentTimestamp,
+        save: jest.fn(),
+      };
+      Session.findById.mockResolvedValue(mockSession);
+
+      await refreshTokens({ refreshToken: validToken });
+
+      expect(mockSession.lastUsedAt).not.toBe(recentTimestamp);
+      expect(mockSession.lastUsedAt.getTime()).toBeGreaterThan(recentTimestamp.getTime());
+    });
+
+    // 📌 MIGRATION: sessions created before lastUsedAt existed don't have the
+    // field. The service must stamp it on first post-deploy refresh, otherwise
+    // the sessions UI would render "Active Invalid Date" for those rows.
+    it('should set lastUsedAt on legacy sessions that predate the field', async () => {
+      jwt.verify.mockReturnValue(decodedPayload);
+      const mockSession = {
+        isRevoked: false,
+        refreshTokenHash: 'fake-hash',
+        // lastUsedAt: undefined (legacy)
+        save: jest.fn(),
+      };
+      Session.findById.mockResolvedValue(mockSession);
+
+      await refreshTokens({ refreshToken: validToken });
+
+      expect(mockSession.lastUsedAt).toBeInstanceOf(Date);
     });
   });
 
   // ─────────────────────────────────────────────
-  // NEW: getCurrentUser
+  // getCurrentUser
   // ─────────────────────────────────────────────
   describe('getCurrentUser', () => {
     it('should return the user document when found', async () => {
