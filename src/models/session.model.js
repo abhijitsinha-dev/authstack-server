@@ -8,6 +8,7 @@ const sessionSchema = new mongoose.Schema(
     userAgent: { type: String },
     isRevoked: { type: Boolean, default: false },
     revokedAt: { type: Date },
+    lastUsedAt: { type: Date, default: Date.now },
     expiresAt: { type: Date, required: true },
   },
   { timestamps: true }

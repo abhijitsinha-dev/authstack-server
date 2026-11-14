@@ -287,6 +287,8 @@ export const refreshTokens = async ({ refreshToken }) => {
   const newRefreshToken = generateRefreshToken(payload.sub, payload.sid);
 
   session.refreshTokenHash = hashToken(newRefreshToken);
+  session.lastUsedAt = new Date();
+
   // Deliberately NOT updating ip / userAgent — those describe where the
   // session was first established (login), not where it was last refreshed.
   await session.save();
