@@ -2,7 +2,7 @@
 
 Backend API for the authstack project — an Express + MongoDB service built for serverless deployment on Vercel, with a dedicated BullMQ worker for background processing.
 
-> **Status:** Authentication flow (signup, login, refresh, logout, current user, session management) and password reset are fully implemented and tested. Core auth, secure JWT session management, and modular API documentation are production-ready.
+> **Status:** Authentication flow (signup, login, refresh, logout, current user, session management, change password) and password reset are fully implemented and tested. Core auth, secure JWT session management, and modular API documentation are production-ready.
 
 ---
 
@@ -12,6 +12,7 @@ Backend API for the authstack project — an Express + MongoDB service built for
 - **Refresh Token Rotation:** Single-use refresh tokens with automatic reuse detection. A replayed (already-rotated) token revokes the entire session — detects token theft.
 - **Current User:** `GET /me` for cold-start hydration, so clients can restore session state without a full login round-trip.
 - **Session Management:** List all active sessions across devices, revoke a specific session, or log out of all other devices. Detects which session is making the current request so the UI can highlight "This device".
+- **Change Password:** Users update their password by providing their current password. All other sessions are revoked on success, keeping the current device logged in.
 - **Password Reset:** Forgot-password + reset-password with 6-digit OTP via email. All active sessions are revoked on successful reset.
 - **Background Jobs:** BullMQ + Upstash Redis for asynchronous email delivery (signup, password reset).
 - **Defense in Depth:** IP-based rate limiting (Upstash), per-email cooldowns, and OTP brute-force lockout (max 5 attempts).
@@ -26,6 +27,7 @@ Backend API for the authstack project — an Express + MongoDB service built for
 - **Atomic OTP consumption** — `findOneAndDelete` prevents concurrent-replay password hijacks.
 - **Refresh token reuse detection** — replaying a rotated token revokes the session; detects leaked or cached tokens.
 - **Session IDOR prevention** — session revoke endpoints scope queries by `user`, so a user cannot revoke another user's session even with a valid ID.
+- **Current-password verification on change** — requires the user's existing password, not just a valid access token. Closes the 15-minute window where a stolen access token could be used for account takeover via password change.
 - **Two-tier OTP hashing** — bcrypt for the 6-digit OTP (slow, prevents offline brute-force); SHA-256 for the high-entropy refresh token (fast, allows DB lookup).
 - **HTML-escaped emails** — user-supplied `name` is escaped before interpolation, preventing markup injection in transactional emails.
 - **Session rotation on reset** — every successful password reset revokes all prior sessions.
@@ -81,7 +83,6 @@ npm run dev
 
 # 5. Run the Worker (Terminal 2)
 npm run worker
-
 ```
 
 Verify the API is running:
@@ -204,7 +205,15 @@ All business logic routes are versioned under `/api/v1`. Rate limits shown below
 - **Rate Limit:** 20 req/min.
 - **Errors:** `401` (unauthorized), `404` (session already gone), `500`.
 
-#### Password Reset
+#### Password
+
+**`POST /change-password`**
+
+- **Requires:** Bearer Token
+- **Body:** `{ currentPassword, newPassword, confirmPassword }`
+- **Description:** Changes the password for the authenticated user. Requires the current password as proof of identity — not just a valid session — so a stolen access token can't take over the account. **All other sessions are revoked** on success; the current session stays active.
+- **Rate Limit:** 5 req/15 min.
+- **Errors:** `400` (weak new password, mismatch, same as current), `401` (unauthorized or wrong current password), `429` (rate limit), `500`.
 
 **`POST /forgot-password`**
 

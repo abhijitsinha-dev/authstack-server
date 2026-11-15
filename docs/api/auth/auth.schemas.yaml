@@ -32,8 +32,6 @@ components:
               $ref: '#/components/schemas/UserResponse'
             accessToken:
               type: string
-              # Block scalar — the value contains ": " which YAML would otherwise
-              # parse as a key separator inside an inline scalar.
               description: |
                 Short-lived JWT (15 min). Send as `Authorization: Bearer <token>`.
             refreshToken:
@@ -155,3 +153,27 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/SessionResponse'
+
+    ChangePasswordSuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          description: |
+            Two variants depending on whether other sessions existed:
+            - "Password changed. Other devices have been logged out." — when revokedCount > 0
+            - "Password changed successfully." — when revokedCount === 0
+          example: Password changed. Other devices have been logged out.
+        data:
+          type: object
+          properties:
+            revokedCount:
+              type: integer
+              description: |
+                Number of OTHER sessions that were revoked. The current session
+                is never counted — it stays active so the caller doesn't get
+                logged out of the device they're using to change the password.
+              example: 2
