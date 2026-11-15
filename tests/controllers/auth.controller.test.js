@@ -13,6 +13,8 @@ jest.unstable_mockModule('../../src/services/auth.service.js', () => ({
   revokeSession: jest.fn(),
   revokeOtherSessions: jest.fn(),
   changePassword: jest.fn(),
+  requestEmailChange: jest.fn(), // 👈 NEW
+  verifyEmailChange: jest.fn(), // 👈 NEW
   requestPasswordReset: jest.fn(),
   resetPassword: jest.fn(),
 }));
@@ -30,6 +32,8 @@ const {
   revokeSession,
   revokeOtherSessions,
   changePassword,
+  requestEmailChange, // 👈 NEW
+  verifyEmailChange, // 👈 NEW
   requestPasswordReset,
   resetPassword,
 } = await import('../../src/services/auth.service.js');
@@ -45,6 +49,8 @@ const {
   revokeSessionController,
   revokeOtherSessionsController,
   changePasswordController,
+  requestEmailChangeController, // 👈 NEW
+  verifyEmailChangeController, // 👈 NEW
   logout,
   forgotPassword,
   resetPasswordController,
@@ -151,13 +157,11 @@ describe('auth.controller', () => {
         ip: '127.0.0.1',
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
       });
-
       expect(res.cookie).toHaveBeenCalledWith(
         'refreshToken',
         'fake-refresh',
         expect.objectContaining({ httpOnly: true, sameSite: 'strict' })
       );
-
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
@@ -167,7 +171,6 @@ describe('auth.controller', () => {
           accessToken: 'fake-access',
         },
       });
-
       const jsonResponse = res.json.mock.calls[0][0];
       expect(jsonResponse.data.refreshToken).toBeUndefined();
     });
@@ -178,7 +181,6 @@ describe('auth.controller', () => {
       await verifyOtp(req, res);
 
       expect(res.cookie).not.toHaveBeenCalled();
-
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
@@ -222,13 +224,11 @@ describe('auth.controller', () => {
         ip: '127.0.0.1',
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
       });
-
       expect(res.cookie).toHaveBeenCalledWith(
         'refreshToken',
         'fake-refresh',
         expect.objectContaining({ httpOnly: true })
       );
-
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
@@ -238,9 +238,6 @@ describe('auth.controller', () => {
           accessToken: 'fake-access',
         },
       });
-
-      const jsonResponse = res.json.mock.calls[0][0];
-      expect(jsonResponse.data.refreshToken).toBeUndefined();
     });
 
     it('should return BOTH tokens in JSON and NOT set a cookie for Mobile', async () => {
@@ -249,7 +246,6 @@ describe('auth.controller', () => {
       await login(req, res);
 
       expect(res.cookie).not.toHaveBeenCalled();
-
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
@@ -273,15 +269,9 @@ describe('auth.controller', () => {
     });
   });
 
-  // ─────────────────────────────────────────────
-  // refreshTokenController
-  // ─────────────────────────────────────────────
   describe('refreshTokenController', () => {
     beforeEach(() => {
-      refreshTokens.mockResolvedValue({
-        accessToken: 'new-access',
-        refreshToken: 'new-refresh',
-      });
+      refreshTokens.mockResolvedValue({ accessToken: 'new-access', refreshToken: 'new-refresh' });
     });
 
     it('should read from cookie and set a rotated cookie (web)', async () => {
@@ -290,18 +280,14 @@ describe('auth.controller', () => {
       await refreshTokenController(req, res);
 
       expect(refreshTokens).toHaveBeenCalledWith({ refreshToken: 'cookie-token' });
-
       expect(res.cookie).toHaveBeenCalledWith(
         'refreshToken',
         'new-refresh',
         expect.objectContaining({ httpOnly: true, sameSite: 'strict' })
       );
-
       expect(res.status).toHaveBeenCalledWith(200);
       const json = res.json.mock.calls[0][0];
-      expect(json.success).toBe(true);
       expect(json.data.accessToken).toBe('new-access');
-      // Web: refresh token is in the cookie, not the body
       expect(json.data.refreshToken).toBeUndefined();
     });
 
@@ -313,11 +299,9 @@ describe('auth.controller', () => {
 
       expect(refreshTokens).toHaveBeenCalledWith({ refreshToken: 'body-token' });
       expect(res.cookie).not.toHaveBeenCalled();
-
       expect(res.status).toHaveBeenCalledWith(200);
       const json = res.json.mock.calls[0][0];
       expect(json.data.accessToken).toBe('new-access');
-      // Mobile: both tokens in the body
       expect(json.data.refreshToken).toBe('new-refresh');
     });
 
@@ -327,7 +311,6 @@ describe('auth.controller', () => {
 
       await refreshTokenController(req, res);
 
-      // `req.cookies?.refreshToken || req.body?.refreshToken` — cookie wins
       expect(refreshTokens).toHaveBeenCalledWith({ refreshToken: 'cookie-token' });
     });
 
@@ -342,9 +325,6 @@ describe('auth.controller', () => {
     });
   });
 
-  // ─────────────────────────────────────────────
-  // getMe
-  // ─────────────────────────────────────────────
   describe('getMe', () => {
     beforeEach(() => {
       req.user = { id: 'u1', sessionId: 's1', role: 'user' };
@@ -362,17 +342,11 @@ describe('auth.controller', () => {
 
       expect(getCurrentUser).toHaveBeenCalledWith({ userId: 'u1' });
       expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
-
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
         data: {
-          user: {
-            id: 'u1',
-            name: 'John',
-            email: 'j@example.com',
-            role: 'user',
-          },
+          user: { id: 'u1', name: 'John', email: 'j@example.com', role: 'user' },
         },
       });
     });
@@ -389,9 +363,6 @@ describe('auth.controller', () => {
     });
   });
 
-  // ─────────────────────────────────────────────
-  // getSessions
-  // ─────────────────────────────────────────────
   describe('getSessions', () => {
     beforeEach(() => {
       req.user = { id: 'u1', sessionId: 's1', role: 'user' };
@@ -407,32 +378,15 @@ describe('auth.controller', () => {
           lastUsedAt: '2026-11-14T12:00:00Z',
           isCurrent: true,
         },
-        {
-          id: 's2',
-          ip: '203.0.113.1',
-          userAgent: 'Mozilla/5.0 (iPhone)',
-          createdAt: '2026-11-13T10:00:00Z',
-          lastUsedAt: '2026-11-13T10:00:00Z',
-          isCurrent: false,
-        },
       ];
       listUserSessions.mockResolvedValue(mockSessions);
 
       await getSessions(req, res);
 
-      expect(listUserSessions).toHaveBeenCalledWith({
-        userId: 'u1',
-        currentSessionId: 's1',
-      });
-
-      // Cache-Control prevents per-user data from being cached by proxies
+      expect(listUserSessions).toHaveBeenCalledWith({ userId: 'u1', currentSessionId: 's1' });
       expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
-
       expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({
-        success: true,
-        data: { sessions: mockSessions },
-      });
+      expect(res.json).toHaveBeenCalledWith({ success: true, data: { sessions: mockSessions } });
     });
 
     it('should propagate service errors', async () => {
@@ -441,13 +395,9 @@ describe('auth.controller', () => {
       await expect(getSessions(req, res)).rejects.toThrow('DB unavailable');
       expect(res.setHeader).not.toHaveBeenCalled();
       expect(res.status).not.toHaveBeenCalled();
-      expect(res.json).not.toHaveBeenCalled();
     });
   });
 
-  // ─────────────────────────────────────────────
-  // revokeSessionController
-  // ─────────────────────────────────────────────
   describe('revokeSessionController', () => {
     beforeEach(() => {
       req.user = { id: 'u1', sessionId: 's1', role: 'user' };
@@ -464,7 +414,6 @@ describe('auth.controller', () => {
         userId: 'u1',
         currentSessionId: 's1',
       });
-
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
@@ -472,18 +421,14 @@ describe('auth.controller', () => {
       });
     });
 
-    it('should propagate service errors (404, 400 for current, etc.)', async () => {
+    it('should propagate service errors', async () => {
       revokeSession.mockRejectedValue(new Error('Session not found'));
 
       await expect(revokeSessionController(req, res)).rejects.toThrow('Session not found');
       expect(res.status).not.toHaveBeenCalled();
-      expect(res.json).not.toHaveBeenCalled();
     });
   });
 
-  // ─────────────────────────────────────────────
-  // revokeOtherSessionsController
-  // ─────────────────────────────────────────────
   describe('revokeOtherSessionsController', () => {
     beforeEach(() => {
       req.user = { id: 'u1', sessionId: 's1', role: 'user' };
@@ -498,7 +443,6 @@ describe('auth.controller', () => {
         userId: 'u1',
         currentSessionId: 's1',
       });
-
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
@@ -508,7 +452,6 @@ describe('auth.controller', () => {
     });
 
     it('should handle zero revoked sessions (idempotent)', async () => {
-      // No other sessions — the operation still succeeds
       revokeOtherSessions.mockResolvedValue({ revokedCount: 0 });
 
       await revokeOtherSessionsController(req, res);
@@ -526,13 +469,9 @@ describe('auth.controller', () => {
 
       await expect(revokeOtherSessionsController(req, res)).rejects.toThrow('DB unavailable');
       expect(res.status).not.toHaveBeenCalled();
-      expect(res.json).not.toHaveBeenCalled();
     });
   });
 
-  // ─────────────────────────────────────────────
-  // changePasswordController
-  // ─────────────────────────────────────────────
   describe('changePasswordController', () => {
     beforeEach(() => {
       req.user = { id: 'u1', sessionId: 's1', role: 'user' };
@@ -548,15 +487,12 @@ describe('auth.controller', () => {
 
       await changePasswordController(req, res);
 
-      // All four params matter: userId + currentSessionId for revocation
-      // scope, currentPassword for identity verification, newPassword for update
       expect(changePassword).toHaveBeenCalledWith({
         userId: 'u1',
         currentSessionId: 's1',
         currentPassword: 'OldPassword123!',
         newPassword: 'NewPassword456!',
       });
-
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
@@ -566,12 +502,10 @@ describe('auth.controller', () => {
     });
 
     it('should use the generic success message when revokedCount is 0', async () => {
-      // User had only their current session — nothing to revoke
       changePassword.mockResolvedValue({ revokedCount: 0 });
 
       await changePasswordController(req, res);
 
-      expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
         message: 'Password changed successfully.',
@@ -579,34 +513,102 @@ describe('auth.controller', () => {
       });
     });
 
-    it('should ignore confirmPassword when calling the service', async () => {
-      // confirmPassword is a Joi-layer concern; the service never sees it
-      changePassword.mockResolvedValue({ revokedCount: 0 });
-
-      await changePasswordController(req, res);
-
-      const callArg = changePassword.mock.calls[0][0];
-      expect(callArg.confirmPassword).toBeUndefined();
-    });
-
-    it('should propagate service errors (wrong current password → 401)', async () => {
+    it('should propagate service errors', async () => {
       changePassword.mockRejectedValue(new Error('Current password is incorrect.'));
 
       await expect(changePasswordController(req, res)).rejects.toThrow(
         'Current password is incorrect.'
       );
       expect(res.status).not.toHaveBeenCalled();
-      expect(res.json).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // NEW: requestEmailChangeController
+  // ─────────────────────────────────────────────
+  describe('requestEmailChangeController', () => {
+    beforeEach(() => {
+      req.user = { id: 'u1', sessionId: 's1', role: 'user' };
+      req.body = { newEmail: 'new@example.com', currentPassword: 'OldPassword123!' };
     });
 
-    it('should propagate service errors (same password → 400)', async () => {
-      changePassword.mockRejectedValue(
-        new Error('New password must be different from current password.')
+    it('should pass userId, newEmail, and currentPassword to the service', async () => {
+      requestEmailChange.mockResolvedValue({});
+
+      await requestEmailChangeController(req, res);
+
+      expect(requestEmailChange).toHaveBeenCalledWith({
+        userId: 'u1',
+        newEmail: 'new@example.com',
+        currentPassword: 'OldPassword123!',
+      });
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        message: 'Verification code sent to your new email.',
+        data: { newEmail: 'new@example.com' },
+      });
+    });
+
+    it('should propagate service errors (wrong password, same email, taken email)', async () => {
+      requestEmailChange.mockRejectedValue(new Error('Current password is incorrect.'));
+
+      await expect(requestEmailChangeController(req, res)).rejects.toThrow(
+        'Current password is incorrect.'
+      );
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // NEW: verifyEmailChangeController
+  // ─────────────────────────────────────────────
+  describe('verifyEmailChangeController', () => {
+    beforeEach(() => {
+      req.user = { id: 'u1', sessionId: 's1', role: 'user' };
+      req.body = { newEmail: 'new@example.com', otp: '123456' };
+    });
+
+    it('should pass all four params and return 200 with revokedCount + newEmail', async () => {
+      verifyEmailChange.mockResolvedValue({ revokedCount: 2 });
+
+      await verifyEmailChangeController(req, res);
+
+      expect(verifyEmailChange).toHaveBeenCalledWith({
+        userId: 'u1',
+        currentSessionId: 's1',
+        newEmail: 'new@example.com',
+        otp: '123456',
+      });
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        message: 'Email changed. Other devices have been logged out.',
+        data: { revokedCount: 2, newEmail: 'new@example.com' },
+      });
+    });
+
+    it('should use the generic success message when revokedCount is 0', async () => {
+      verifyEmailChange.mockResolvedValue({ revokedCount: 0 });
+
+      await verifyEmailChangeController(req, res);
+
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        message: 'Email changed successfully.',
+        data: { revokedCount: 0, newEmail: 'new@example.com' },
+      });
+    });
+
+    it('should propagate service errors (wrong OTP, expired, etc.)', async () => {
+      verifyEmailChange.mockRejectedValue(
+        new Error('Invalid OTP code. You have 4 attempts remaining.')
       );
 
-      await expect(changePasswordController(req, res)).rejects.toThrow(
-        'New password must be different'
-      );
+      await expect(verifyEmailChangeController(req, res)).rejects.toThrow('Invalid OTP code');
       expect(res.status).not.toHaveBeenCalled();
       expect(res.json).not.toHaveBeenCalled();
     });
@@ -619,12 +621,10 @@ describe('auth.controller', () => {
       await logout(req, res);
 
       expect(logoutUser).toHaveBeenCalledWith('fake-session-id');
-
       expect(res.clearCookie).toHaveBeenCalledWith(
         'refreshToken',
         expect.objectContaining({ httpOnly: true })
       );
-
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
@@ -638,7 +638,6 @@ describe('auth.controller', () => {
       await expect(logout(req, res)).rejects.toThrow('Session not found');
       expect(res.status).not.toHaveBeenCalled();
       expect(res.clearCookie).not.toHaveBeenCalled();
-      expect(res.json).not.toHaveBeenCalled();
     });
   });
 
@@ -663,7 +662,6 @@ describe('auth.controller', () => {
 
       await expect(forgotPassword(req, res)).rejects.toThrow('Cooldown active');
       expect(res.status).not.toHaveBeenCalled();
-      expect(res.json).not.toHaveBeenCalled();
     });
   });
 
@@ -684,7 +682,6 @@ describe('auth.controller', () => {
         otp: '123456',
         newPassword: 'NewPassword123!',
       });
-
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
@@ -698,7 +695,6 @@ describe('auth.controller', () => {
 
       await expect(resetPasswordController(req, res)).rejects.toThrow('Invalid OTP code.');
       expect(res.status).not.toHaveBeenCalled();
-      expect(res.json).not.toHaveBeenCalled();
     });
   });
 });

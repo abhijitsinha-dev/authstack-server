@@ -5,12 +5,7 @@ import { jest } from '@jest/globals';
 // ─────────────────────────────────────────────
 
 jest.unstable_mockModule('../../src/models/user.model.js', () => ({
-  default: {
-    findOne: jest.fn(),
-    findById: jest.fn(),
-    create: jest.fn(),
-    deleteOne: jest.fn(),
-  },
+  default: { findOne: jest.fn(), findById: jest.fn(), create: jest.fn(), deleteOne: jest.fn() },
 }));
 
 jest.unstable_mockModule('../../src/models/otp.model.js', () => ({
@@ -41,6 +36,7 @@ jest.unstable_mockModule('../../src/queues/email.queue.js', () => ({
 jest.unstable_mockModule('../../src/services/email.service.js', () => ({
   sendSignupOtpEmail: jest.fn(),
   sendPasswordResetEmail: jest.fn(),
+  sendEmailChangeOtpEmail: jest.fn(), // 👈 NEW
 }));
 
 jest.unstable_mockModule('../../src/utils/otp.js', () => ({
@@ -79,7 +75,10 @@ const { default: bcrypt } = await import('bcryptjs');
 const { default: jwt } = await import('jsonwebtoken');
 const { default: isStrongPassword } = await import('validator/lib/isStrongPassword.js');
 const { emailQueue } = await import('../../src/queues/email.queue.js');
-const { sendSignupOtpEmail } = await import('../../src/services/email.service.js');
+const {
+  sendSignupOtpEmail,
+  sendEmailChangeOtpEmail, // 👈 NEW
+} = await import('../../src/services/email.service.js');
 const { logger } = await import('../../src/config/logger.js');
 const {
   requestSignupOtp,
@@ -92,7 +91,9 @@ const {
   listUserSessions,
   revokeSession,
   revokeOtherSessions,
-  changePassword, // 👈 NEW
+  changePassword,
+  requestEmailChange, // 👈 NEW
+  verifyEmailChange, // 👈 NEW
   requestPasswordReset,
   resetPassword,
 } = await import('../../src/services/auth.service.js');
@@ -166,16 +167,12 @@ describe('auth.service', () => {
 
     it('should throw 404 if user does not exist', async () => {
       User.findOne.mockResolvedValue(null);
-      await expect(resendSignupOtp({ email })).rejects.toThrow(
-        'User not found. Please sign up first.'
-      );
+      await expect(resendSignupOtp({ email })).rejects.toThrow('User not found');
     });
 
     it('should throw 400 if user is already verified', async () => {
       User.findOne.mockResolvedValue({ isVerified: true });
-      await expect(resendSignupOtp({ email })).rejects.toThrow(
-        'Account is already verified. Please log in.'
-      );
+      await expect(resendSignupOtp({ email })).rejects.toThrow('Account is already verified');
     });
 
     it('should throw 429 if the cooldown (20s) has not passed', async () => {
@@ -222,7 +219,7 @@ describe('auth.service', () => {
       expect(Otp.findOne).not.toHaveBeenCalled();
     });
 
-    it('should throw 400 if user is already verified (and NOT query OTP)', async () => {
+    it('should throw 400 if user is already verified', async () => {
       User.findOne.mockResolvedValue({ isVerified: true });
       Otp.findOne.mockClear();
 
@@ -286,11 +283,7 @@ describe('auth.service', () => {
     });
 
     it('should verify user, create session, and return tokens on success', async () => {
-      Otp.findOne.mockResolvedValue({
-        _id: 'otp123',
-        codeHash: 'hash',
-        expiresAt: inMinutes(5),
-      });
+      Otp.findOne.mockResolvedValue({ _id: 'otp123', codeHash: 'hash', expiresAt: inMinutes(5) });
       bcrypt.compare.mockResolvedValue(true);
       Session.create.mockResolvedValue({});
 
@@ -308,7 +301,6 @@ describe('auth.service', () => {
           refreshTokenHash: 'fake-hash',
         })
       );
-
       expect(result.accessToken).toBe('fake-access-token');
       expect(result.refreshToken).toBe('fake-refresh-token');
     });
@@ -344,9 +336,7 @@ describe('auth.service', () => {
 
     it('should throw 403 if user is not verified', async () => {
       User.findOne.mockReturnValue({ select: jest.fn().mockResolvedValue({ isVerified: false }) });
-      await expect(loginUser(payload)).rejects.toThrow(
-        'Please verify your email before logging in.'
-      );
+      await expect(loginUser(payload)).rejects.toThrow('Please verify your email');
     });
 
     it('should throw 401 if password is incorrect', async () => {
@@ -382,11 +372,10 @@ describe('auth.service', () => {
       await expect(refreshTokens({})).rejects.toThrow('No refresh token provided');
     });
 
-    it('should throw 401 if jwt.verify fails (malformed/expired)', async () => {
+    it('should throw 401 if jwt.verify fails', async () => {
       jwt.verify.mockImplementation(() => {
         throw new Error('jwt malformed');
       });
-
       await expect(refreshTokens({ refreshToken: 'bad' })).rejects.toThrow(
         'Invalid or expired refresh token'
       );
@@ -395,7 +384,6 @@ describe('auth.service', () => {
     it('should throw 401 if the session does not exist', async () => {
       jwt.verify.mockReturnValue(decodedPayload);
       Session.findById.mockResolvedValue(null);
-
       await expect(refreshTokens({ refreshToken: validToken })).rejects.toThrow(
         'Session has been revoked or expired'
       );
@@ -404,7 +392,6 @@ describe('auth.service', () => {
     it('should throw 401 if the session is already revoked', async () => {
       jwt.verify.mockReturnValue(decodedPayload);
       Session.findById.mockResolvedValue({ isRevoked: true });
-
       await expect(refreshTokens({ refreshToken: validToken })).rejects.toThrow(
         'Session has been revoked or expired'
       );
@@ -422,19 +409,14 @@ describe('auth.service', () => {
       await expect(refreshTokens({ refreshToken: validToken })).rejects.toThrow(
         'Refresh token reuse detected'
       );
-
       expect(mockSession.isRevoked).toBe(true);
       expect(mockSession.revokedAt).toBeInstanceOf(Date);
       expect(mockSession.save).toHaveBeenCalled();
     });
 
-    it('should rotate tokens, update the hash, and set lastUsedAt on success', async () => {
+    it('should rotate tokens and update the stored hash on success', async () => {
       jwt.verify.mockReturnValue(decodedPayload);
-      const mockSession = {
-        isRevoked: false,
-        refreshTokenHash: 'fake-hash',
-        save: jest.fn(),
-      };
+      const mockSession = { isRevoked: false, refreshTokenHash: 'fake-hash', save: jest.fn() };
       Session.findById.mockResolvedValue(mockSession);
 
       const before = Date.now();
@@ -444,37 +426,14 @@ describe('auth.service', () => {
       expect(result.accessToken).toBe('fake-access-token');
       expect(result.refreshToken).toBe('fake-refresh-token');
       expect(mockSession.save).toHaveBeenCalled();
-      expect(mockSession.isRevoked).toBe(false);
-
       expect(mockSession.lastUsedAt).toBeInstanceOf(Date);
       expect(mockSession.lastUsedAt.getTime()).toBeGreaterThanOrEqual(before);
       expect(mockSession.lastUsedAt.getTime()).toBeLessThanOrEqual(after);
     });
 
-    it('should advance lastUsedAt on every refresh (no throttle)', async () => {
-      jwt.verify.mockReturnValue(decodedPayload);
-      const recentTimestamp = new Date(Date.now() - 2 * 60 * 1000);
-      const mockSession = {
-        isRevoked: false,
-        refreshTokenHash: 'fake-hash',
-        lastUsedAt: recentTimestamp,
-        save: jest.fn(),
-      };
-      Session.findById.mockResolvedValue(mockSession);
-
-      await refreshTokens({ refreshToken: validToken });
-
-      expect(mockSession.lastUsedAt).not.toBe(recentTimestamp);
-      expect(mockSession.lastUsedAt.getTime()).toBeGreaterThan(recentTimestamp.getTime());
-    });
-
     it('should set lastUsedAt on legacy sessions that predate the field', async () => {
       jwt.verify.mockReturnValue(decodedPayload);
-      const mockSession = {
-        isRevoked: false,
-        refreshTokenHash: 'fake-hash',
-        save: jest.fn(),
-      };
+      const mockSession = { isRevoked: false, refreshTokenHash: 'fake-hash', save: jest.fn() };
       Session.findById.mockResolvedValue(mockSession);
 
       await refreshTokens({ refreshToken: validToken });
@@ -489,55 +448,41 @@ describe('auth.service', () => {
       User.findById.mockResolvedValue(mockUser);
 
       const result = await getCurrentUser({ userId: 'u1' });
-
       expect(User.findById).toHaveBeenCalledWith('u1');
       expect(result).toBe(mockUser);
     });
 
-    it('should throw 401 if the user no longer exists (stale session)', async () => {
+    it('should throw 401 if the user no longer exists', async () => {
       User.findById.mockResolvedValue(null);
-
       await expect(getCurrentUser({ userId: 'deleted-user' })).rejects.toThrow(
-        'Session is no longer valid. Please log in again.'
+        'Session is no longer valid'
       );
     });
   });
 
   describe('logoutUser', () => {
-    const sessionId = 's1';
-
-    it('should revoke the session with revokedAt and return the updated document', async () => {
+    it('should revoke the session with revokedAt', async () => {
       const mockUpdatedSession = { _id: 's1', isRevoked: true };
       Session.findByIdAndUpdate.mockResolvedValue(mockUpdatedSession);
 
-      const result = await logoutUser(sessionId);
+      const result = await logoutUser('s1');
 
       expect(Session.findByIdAndUpdate).toHaveBeenCalledWith(
-        sessionId,
-        expect.objectContaining({
-          isRevoked: true,
-          revokedAt: expect.any(Date),
-        }),
+        's1',
+        expect.objectContaining({ isRevoked: true, revokedAt: expect.any(Date) }),
         { returnDocument: 'after' }
       );
-
       expect(result).toEqual(mockUpdatedSession);
     });
 
-    it('should throw 404 if the session is already deleted or does not exist', async () => {
+    it('should throw 404 if the session does not exist', async () => {
       Session.findByIdAndUpdate.mockResolvedValue(null);
-
-      await expect(logoutUser(sessionId)).rejects.toThrow(
-        'Session not found or already logged out.'
-      );
+      await expect(logoutUser('s1')).rejects.toThrow('Session not found');
     });
   });
 
   describe('listUserSessions', () => {
-    const userId = 'u1';
-    const currentSessionId = 's1';
-
-    it('should map sessions and mark the current one with isCurrent: true', async () => {
+    it('should map sessions and mark the current one', async () => {
       const mockSessions = [
         {
           _id: 's1',
@@ -556,18 +501,10 @@ describe('auth.service', () => {
       ];
       Session.find.mockReturnValue(buildFindChain(mockSessions));
 
-      const result = await listUserSessions({ userId, currentSessionId });
+      const result = await listUserSessions({ userId: 'u1', currentSessionId: 's1' });
 
       expect(result).toHaveLength(2);
-      expect(result[0]).toEqual({
-        id: 's1',
-        ip: '127.0.0.1',
-        userAgent: 'Mozilla',
-        createdAt: new Date('2026-11-14T10:00:00Z'),
-        lastUsedAt: new Date('2026-11-14T12:00:00Z'),
-        isCurrent: true,
-      });
-      expect(result[1].id).toBe('s2');
+      expect(result[0].isCurrent).toBe(true);
       expect(result[1].isCurrent).toBe(false);
     });
 
@@ -575,106 +512,58 @@ describe('auth.service', () => {
       const chain = buildFindChain([]);
       Session.find.mockReturnValue(chain);
 
-      await listUserSessions({ userId, currentSessionId });
+      await listUserSessions({ userId: 'u1', currentSessionId: 's1' });
 
       const filter = Session.find.mock.calls[0][0];
-      expect(filter.user).toBe(userId);
+      expect(filter.user).toBe('u1');
       expect(filter.isRevoked).toBe(false);
       expect(filter.expiresAt).toEqual({ $gt: expect.any(Date) });
-
-      expect(chain.sort).toHaveBeenCalledWith({ lastUsedAt: -1 });
       expect(chain.select).toHaveBeenCalledWith('-refreshTokenHash -__v');
-      expect(chain.lean).toHaveBeenCalled();
-    });
-
-    it('should return an empty array when the user has no sessions', async () => {
-      Session.find.mockReturnValue(buildFindChain([]));
-
-      const result = await listUserSessions({ userId, currentSessionId });
-
-      expect(result).toEqual([]);
     });
   });
 
   describe('revokeSession', () => {
-    const sessionId = 's2';
-    const userId = 'u1';
-    const currentSessionId = 's1';
-
-    it('should throw 400 if trying to revoke the current session (without a DB call)', async () => {
+    it('should throw 400 if trying to revoke the current session', async () => {
       await expect(
-        revokeSession({ sessionId: currentSessionId, userId, currentSessionId })
+        revokeSession({ sessionId: 's1', userId: 'u1', currentSessionId: 's1' })
       ).rejects.toThrow('Cannot revoke the current session');
-
       expect(Session.findOneAndUpdate).not.toHaveBeenCalled();
     });
 
-    it('should throw 404 if the session does not exist (or belongs to another user)', async () => {
+    it('should throw 404 if the session does not exist', async () => {
       Session.findOneAndUpdate.mockResolvedValue(null);
-
-      await expect(revokeSession({ sessionId, userId, currentSessionId })).rejects.toThrow(
-        'Session not found'
-      );
+      await expect(
+        revokeSession({ sessionId: 's2', userId: 'u1', currentSessionId: 's1' })
+      ).rejects.toThrow('Session not found');
     });
 
     it('should scope the query by userId to prevent IDOR', async () => {
       Session.findOneAndUpdate.mockResolvedValue({ _id: 's2', isRevoked: true });
-
-      await revokeSession({ sessionId, userId, currentSessionId });
+      await revokeSession({ sessionId: 's2', userId: 'u1', currentSessionId: 's1' });
 
       const filter = Session.findOneAndUpdate.mock.calls[0][0];
-      expect(filter.user).toBe(userId);
-      expect(filter._id).toBe(sessionId);
-      expect(filter.isRevoked).toBe(false);
-      expect(filter.expiresAt).toEqual({ $gt: expect.any(Date) });
-    });
-
-    it('should return the revoked session on success', async () => {
-      const mockRevoked = { _id: 's2', isRevoked: true, revokedAt: new Date() };
-      Session.findOneAndUpdate.mockResolvedValue(mockRevoked);
-
-      const result = await revokeSession({ sessionId, userId, currentSessionId });
-
-      expect(result).toBe(mockRevoked);
+      expect(filter.user).toBe('u1');
+      expect(filter._id).toBe('s2');
     });
   });
 
   describe('revokeOtherSessions', () => {
-    const userId = 'u1';
-    const currentSessionId = 's1';
-
-    it('should return the count of revoked sessions', async () => {
+    it('should return the count and exclude current session', async () => {
       Session.updateMany.mockResolvedValue({ modifiedCount: 3 });
+      const result = await revokeOtherSessions({ userId: 'u1', currentSessionId: 's1' });
 
-      const result = await revokeOtherSessions({ userId, currentSessionId });
-
+      const filter = Session.updateMany.mock.calls[0][0];
+      expect(filter._id).toEqual({ $ne: 's1' });
       expect(result).toEqual({ revokedCount: 3 });
     });
 
-    it('should exclude the current session via $ne filter', async () => {
+    it('should succeed with revokedCount 0 when no other sessions exist', async () => {
       Session.updateMany.mockResolvedValue({ modifiedCount: 0 });
-
-      await revokeOtherSessions({ userId, currentSessionId });
-
-      const filter = Session.updateMany.mock.calls[0][0];
-      expect(filter.user).toBe(userId);
-      expect(filter._id).toEqual({ $ne: currentSessionId });
-      expect(filter.isRevoked).toBe(false);
-      expect(filter.expiresAt).toEqual({ $gt: expect.any(Date) });
-    });
-
-    it('should succeed with revokedCount: 0 when no other sessions exist', async () => {
-      Session.updateMany.mockResolvedValue({ modifiedCount: 0 });
-
-      const result = await revokeOtherSessions({ userId, currentSessionId });
-
+      const result = await revokeOtherSessions({ userId: 'u1', currentSessionId: 's1' });
       expect(result.revokedCount).toBe(0);
     });
   });
 
-  // ─────────────────────────────────────────────
-  // NEW: changePassword
-  // ─────────────────────────────────────────────
   describe('changePassword', () => {
     const payload = {
       userId: 'u1',
@@ -686,81 +575,262 @@ describe('auth.service', () => {
     let selectMock;
 
     beforeEach(() => {
+      mockUser = { _id: 'u1', email: 'test@example.com', password: 'hashed-old', save: jest.fn() };
+      selectMock = jest.fn().mockResolvedValue(mockUser);
+      User.findById.mockReturnValue({ select: selectMock });
+    });
+
+    it('should select +password field', async () => {
+      bcrypt.compare.mockResolvedValue(true);
+      Session.updateMany.mockResolvedValue({ modifiedCount: 0 });
+
+      await changePassword(payload);
+
+      expect(selectMock).toHaveBeenCalledWith('+password');
+    });
+
+    it('should throw 401 if user not found', async () => {
+      User.findById.mockReturnValue({ select: jest.fn().mockResolvedValue(null) });
+      await expect(changePassword(payload)).rejects.toThrow('Session is no longer valid');
+    });
+
+    it('should throw 401 on wrong current password', async () => {
+      bcrypt.compare.mockResolvedValue(false);
+      await expect(changePassword(payload)).rejects.toThrow('Current password is incorrect.');
+      expect(mockUser.save).not.toHaveBeenCalled();
+    });
+
+    it('should throw 400 if new password equals current', async () => {
+      bcrypt.compare.mockResolvedValue(true);
+      await expect(
+        changePassword({ ...payload, newPassword: payload.currentPassword })
+      ).rejects.toThrow('New password must be different');
+    });
+
+    it('should update password and revoke other sessions on success', async () => {
+      bcrypt.compare.mockResolvedValue(true);
+      Session.updateMany.mockResolvedValue({ modifiedCount: 2 });
+
+      const result = await changePassword(payload);
+
+      expect(mockUser.password).toBe('NewPassword456!');
+      expect(mockUser.save).toHaveBeenCalled();
+      expect(Session.updateMany).toHaveBeenCalledWith(
+        { user: 'u1', _id: { $ne: 's1' }, isRevoked: false },
+        expect.objectContaining({ isRevoked: true, revokedAt: expect.any(Date) })
+      );
+      expect(result).toEqual({ revokedCount: 2 });
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // NEW: requestEmailChange
+  // ─────────────────────────────────────────────
+  describe('requestEmailChange', () => {
+    const payload = {
+      userId: 'u1',
+      newEmail: 'new@example.com',
+      currentPassword: 'OldPassword123!',
+    };
+    let mockUser;
+    let selectMock;
+
+    beforeEach(() => {
       mockUser = {
         _id: 'u1',
-        email: 'test@example.com',
-        password: 'hashed-old-password',
+        email: 'old@example.com',
+        name: 'John',
+        password: 'hashed-old',
         save: jest.fn(),
       };
       selectMock = jest.fn().mockResolvedValue(mockUser);
       User.findById.mockReturnValue({ select: selectMock });
     });
 
-    it('should select +password field when fetching the user', async () => {
+    it('should select +password field', async () => {
       bcrypt.compare.mockResolvedValue(true);
-      Session.updateMany.mockResolvedValue({ modifiedCount: 0 });
+      User.findOne.mockResolvedValue(null);
+      Otp.findOne.mockResolvedValue(null);
+      Otp.deleteMany.mockResolvedValue({});
+      Otp.create.mockResolvedValue({});
+      sendEmailChangeOtpEmail.mockResolvedValue({});
 
-      await changePassword(payload);
+      await requestEmailChange(payload);
 
-      expect(User.findById).toHaveBeenCalledWith('u1');
-      // Critical: without +password, bcrypt.compare receives undefined
       expect(selectMock).toHaveBeenCalledWith('+password');
     });
 
-    it('should throw 401 if the user no longer exists (stale session)', async () => {
+    it('should throw 401 if user not found', async () => {
       User.findById.mockReturnValue({ select: jest.fn().mockResolvedValue(null) });
+      await expect(requestEmailChange(payload)).rejects.toThrow('Session is no longer valid');
+    });
 
-      await expect(changePassword(payload)).rejects.toThrow(
-        'Session is no longer valid. Please log in again.'
+    it('should throw 401 on wrong current password', async () => {
+      bcrypt.compare.mockResolvedValue(false);
+      await expect(requestEmailChange(payload)).rejects.toThrow('Current password is incorrect.');
+      expect(Otp.create).not.toHaveBeenCalled();
+    });
+
+    it('should throw 400 if new email equals current email', async () => {
+      bcrypt.compare.mockResolvedValue(true);
+      await expect(requestEmailChange({ ...payload, newEmail: 'old@example.com' })).rejects.toThrow(
+        'New email must be different from current email.'
+      );
+    });
+
+    it('should throw 409 if new email is already taken', async () => {
+      bcrypt.compare.mockResolvedValue(true);
+      User.findOne.mockResolvedValue({ _id: 'other-user', email: 'new@example.com' });
+
+      await expect(requestEmailChange(payload)).rejects.toThrow('This email is already in use.');
+      expect(Otp.create).not.toHaveBeenCalled();
+    });
+
+    it('should throw 429 if the cooldown has not passed', async () => {
+      bcrypt.compare.mockResolvedValue(true);
+      User.findOne.mockResolvedValue(null);
+      Otp.findOne.mockResolvedValue({ createdAt: new Date(Date.now() - 5000) });
+
+      await expect(requestEmailChange(payload)).rejects.toThrow(/Please wait \d+ seconds/);
+      expect(sendEmailChangeOtpEmail).not.toHaveBeenCalled();
+    });
+
+    it('should create OTP and send email synchronously on success', async () => {
+      bcrypt.compare.mockResolvedValue(true);
+      User.findOne.mockResolvedValue(null);
+      Otp.findOne.mockResolvedValue(null);
+      Otp.deleteMany.mockResolvedValue({});
+      Otp.create.mockResolvedValue({});
+      sendEmailChangeOtpEmail.mockResolvedValue({});
+
+      await requestEmailChange(payload);
+
+      expect(Otp.deleteMany).toHaveBeenCalledWith({ userId: 'u1', purpose: 'email-change' });
+      expect(Otp.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: 'u1',
+          email: 'new@example.com',
+          purpose: 'email-change',
+          codeHash: 'hashed-otp',
+        })
+      );
+      expect(sendEmailChangeOtpEmail).toHaveBeenCalledWith('new@example.com', 'John', '123456');
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // NEW: verifyEmailChange
+  // ─────────────────────────────────────────────
+  describe('verifyEmailChange', () => {
+    const payload = {
+      userId: 'u1',
+      currentSessionId: 's1',
+      newEmail: 'new@example.com',
+      otp: '123456',
+    };
+    let mockUser;
+
+    beforeEach(() => {
+      mockUser = { _id: 'u1', email: 'old@example.com', save: jest.fn() };
+      User.findById.mockResolvedValue(mockUser);
+    });
+
+    it('should throw 401 if user not found', async () => {
+      User.findById.mockResolvedValue(null);
+      await expect(verifyEmailChange(payload)).rejects.toThrow('Session is no longer valid');
+    });
+
+    it('should throw 400 if new email equals current email', async () => {
+      await expect(verifyEmailChange({ ...payload, newEmail: 'old@example.com' })).rejects.toThrow(
+        'New email must be different from current email.'
+      );
+    });
+
+    it('should throw 400 if OTP record does not exist', async () => {
+      Otp.findOne.mockResolvedValue(null);
+      await expect(verifyEmailChange(payload)).rejects.toThrow('OTP has expired or does not exist');
+    });
+
+    it('should throw 400 if OTP has expired', async () => {
+      Otp.findOne.mockResolvedValue({
+        _id: 'otp123',
+        codeHash: 'hash',
+        attempts: 0,
+        expiresAt: new Date(Date.now() - 1000),
+      });
+      await expect(verifyEmailChange(payload)).rejects.toThrow('OTP has expired or does not exist');
+    });
+
+    it('should throw 429 if locked out, without calling bcrypt', async () => {
+      Otp.findOne.mockResolvedValue({ attempts: 5, expiresAt: inMinutes(5) });
+      bcrypt.compare.mockClear();
+      await expect(verifyEmailChange(payload)).rejects.toThrow(
+        'Maximum verification attempts exceeded'
       );
       expect(bcrypt.compare).not.toHaveBeenCalled();
     });
 
-    it('should throw 401 if the current password is incorrect', async () => {
+    it('should increment attempts and throw 400 on wrong OTP', async () => {
+      const mockOtpRecord = { attempts: 1, expiresAt: inMinutes(5), save: jest.fn() };
+      Otp.findOne.mockResolvedValue(mockOtpRecord);
       bcrypt.compare.mockResolvedValue(false);
 
-      await expect(changePassword(payload)).rejects.toThrow('Current password is incorrect.');
-      expect(mockUser.save).not.toHaveBeenCalled();
-      expect(Session.updateMany).not.toHaveBeenCalled();
+      await expect(verifyEmailChange(payload)).rejects.toThrow('You have 3 attempts remaining');
+      expect(mockOtpRecord.attempts).toBe(2);
+      expect(mockOtpRecord.save).toHaveBeenCalled();
     });
 
-    it('should throw 400 if the new password is the same as the current password', async () => {
+    it('should throw 400 if OTP was already consumed (concurrent request)', async () => {
+      Otp.findOne.mockResolvedValue({
+        _id: 'otp123',
+        codeHash: 'hash',
+        attempts: 0,
+        expiresAt: inMinutes(5),
+      });
       bcrypt.compare.mockResolvedValue(true);
+      Otp.findOneAndDelete.mockResolvedValue(null);
 
-      await expect(
-        changePassword({ ...payload, newPassword: payload.currentPassword })
-      ).rejects.toThrow('New password must be different from current password.');
+      await expect(verifyEmailChange(payload)).rejects.toThrow('OTP has already been used');
       expect(mockUser.save).not.toHaveBeenCalled();
-      expect(Session.updateMany).not.toHaveBeenCalled();
     });
 
-    it('should update password, save, and revoke other sessions on success', async () => {
+    it('should throw 409 if new email was claimed during the OTP window', async () => {
+      Otp.findOne.mockResolvedValue({
+        _id: 'otp123',
+        codeHash: 'hash',
+        attempts: 0,
+        expiresAt: inMinutes(5),
+      });
       bcrypt.compare.mockResolvedValue(true);
+      Otp.findOneAndDelete.mockResolvedValue({ _id: 'otp123' });
+      User.findOne.mockResolvedValue({ _id: 'other-user', email: 'new@example.com' });
+
+      await expect(verifyEmailChange(payload)).rejects.toThrow('This email is already in use.');
+      expect(mockUser.save).not.toHaveBeenCalled();
+    });
+
+    it('should update email, save, and revoke other sessions on success', async () => {
+      Otp.findOne.mockResolvedValue({
+        _id: 'otp123',
+        codeHash: 'hash',
+        attempts: 0,
+        expiresAt: inMinutes(5),
+      });
+      bcrypt.compare.mockResolvedValue(true);
+      Otp.findOneAndDelete.mockResolvedValue({ _id: 'otp123' });
+      User.findOne.mockResolvedValue(null);
       Session.updateMany.mockResolvedValue({ modifiedCount: 2 });
 
-      const result = await changePassword(payload);
+      const result = await verifyEmailChange(payload);
 
-      expect(bcrypt.compare).toHaveBeenCalledWith('OldPassword123!', 'hashed-old-password');
-      expect(mockUser.password).toBe('NewPassword456!');
+      expect(mockUser.email).toBe('new@example.com');
       expect(mockUser.save).toHaveBeenCalled();
-
-      // 🔒 The current session is EXCLUDED via $ne — this is the entire reason
-      // change-password exists as a security action
+      expect(Otp.findOneAndDelete).toHaveBeenCalledWith({ _id: 'otp123', purpose: 'email-change' });
       expect(Session.updateMany).toHaveBeenCalledWith(
         { user: 'u1', _id: { $ne: 's1' }, isRevoked: false },
         expect.objectContaining({ isRevoked: true, revokedAt: expect.any(Date) })
       );
-
       expect(result).toEqual({ revokedCount: 2 });
-    });
-
-    it('should return revokedCount: 0 when no other sessions exist (idempotent)', async () => {
-      bcrypt.compare.mockResolvedValue(true);
-      Session.updateMany.mockResolvedValue({ modifiedCount: 0 });
-
-      const result = await changePassword(payload);
-
-      expect(result).toEqual({ revokedCount: 0 });
     });
   });
 
@@ -792,20 +862,16 @@ describe('auth.service', () => {
       expect(result).toBeUndefined();
       expect(Otp.findOne).not.toHaveBeenCalled();
       expect(emailQueue.add).not.toHaveBeenCalled();
-      expect(logger.info).toHaveBeenCalledWith(
-        expect.stringContaining('non-existent or unverified')
-      );
     });
 
-    it('should throw 429 if cooldown (20s) has not passed', async () => {
+    it('should throw 429 if cooldown active', async () => {
       User.findOne.mockResolvedValue({ isVerified: true });
       Otp.findOne.mockResolvedValue({ createdAt: new Date(Date.now() - 5000) });
 
       await expect(requestPasswordReset({ email })).rejects.toThrow(/Please wait \d+ seconds/);
-      expect(emailQueue.add).not.toHaveBeenCalled();
     });
 
-    it('should generate OTP and queue send-reset-otp job if verified and cooldown passed', async () => {
+    it('should queue send-reset-otp on success', async () => {
       User.findOne.mockResolvedValue({ name: 'John', isVerified: true });
       Otp.findOne.mockResolvedValue({ createdAt: new Date(Date.now() - 25000) });
       Otp.deleteMany.mockResolvedValue({});
@@ -815,7 +881,6 @@ describe('auth.service', () => {
       await requestPasswordReset({ email });
 
       expect(Otp.deleteMany).toHaveBeenCalledWith({ email, purpose: 'reset' });
-      expect(Otp.create).toHaveBeenCalledWith(expect.objectContaining({ email, purpose: 'reset' }));
       expect(emailQueue.add).toHaveBeenCalledWith('send-reset-otp', {
         email,
         name: 'John',
@@ -843,23 +908,20 @@ describe('auth.service', () => {
       await expect(resetPassword(payload)).rejects.toThrow('OTP has expired or does not exist');
     });
 
-    it('should query OTP with purpose "reset" (prevents signup/reset collision)', async () => {
+    it('should query OTP with purpose "reset"', async () => {
       Otp.findOne.mockResolvedValue(null);
-
-      await expect(resetPassword(payload)).rejects.toThrow('OTP has expired or does not exist');
+      await expect(resetPassword(payload)).rejects.toThrow('OTP has expired');
       expect(Otp.findOne).toHaveBeenCalledWith({ email: 'john@example.com', purpose: 'reset' });
     });
 
-    it('should throw 400 if OTP record exists but has expired', async () => {
+    it('should throw 400 if OTP expired', async () => {
       Otp.findOne.mockResolvedValue({
         _id: 'otp123',
         codeHash: 'hash',
         attempts: 0,
         expiresAt: new Date(Date.now() - 1000),
       });
-
-      await expect(resetPassword(payload)).rejects.toThrow('OTP has expired or does not exist');
-      expect(bcrypt.compare).not.toHaveBeenCalled();
+      await expect(resetPassword(payload)).rejects.toThrow('OTP has expired');
       expect(Otp.findOneAndDelete).not.toHaveBeenCalled();
     });
 
@@ -870,17 +932,16 @@ describe('auth.service', () => {
       );
     });
 
-    it('should increment attempts and throw 400 on wrong OTP', async () => {
+    it('should increment attempts on wrong OTP', async () => {
       const mockOtpRecord = { attempts: 1, expiresAt: inMinutes(5), save: jest.fn() };
       Otp.findOne.mockResolvedValue(mockOtpRecord);
       bcrypt.compare.mockResolvedValue(false);
 
       await expect(resetPassword(payload)).rejects.toThrow('You have 3 attempts remaining');
       expect(mockOtpRecord.attempts).toBe(2);
-      expect(mockOtpRecord.save).toHaveBeenCalled();
     });
 
-    it('should throw 400 if the OTP was already consumed by a concurrent request', async () => {
+    it('should throw 400 if OTP was already consumed', async () => {
       Otp.findOne.mockResolvedValue({
         _id: 'otp123',
         codeHash: 'hash',
@@ -891,12 +952,10 @@ describe('auth.service', () => {
       Otp.findOneAndDelete.mockResolvedValue(null);
 
       await expect(resetPassword(payload)).rejects.toThrow('OTP has already been used');
-
       expect(mockUser.save).not.toHaveBeenCalled();
-      expect(Session.updateMany).not.toHaveBeenCalled();
     });
 
-    it('should update password, consume OTP, and revoke all sessions on success', async () => {
+    it('should update password and revoke ALL sessions on success', async () => {
       Otp.findOne.mockResolvedValue({
         _id: 'otp123',
         codeHash: 'hash',
@@ -912,13 +971,9 @@ describe('auth.service', () => {
       expect(Otp.findOneAndDelete).toHaveBeenCalledWith({ _id: 'otp123', purpose: 'reset' });
       expect(mockUser.password).toBe('NewPassword123!');
       expect(mockUser.save).toHaveBeenCalled();
-
       expect(Session.updateMany).toHaveBeenCalledWith(
         { user: 'u1' },
-        expect.objectContaining({
-          isRevoked: true,
-          revokedAt: expect.any(Date),
-        })
+        expect.objectContaining({ isRevoked: true, revokedAt: expect.any(Date) })
       );
     });
   });

@@ -23,7 +23,7 @@ jest.unstable_mockModule('../../src/config/logger.js', () => ({
 // ─────────────────────────────────────────────
 // 3. DYNAMIC IMPORTS
 // ─────────────────────────────────────────────
-const { sendSignupOtpEmail, sendPasswordResetEmail } =
+const { sendSignupOtpEmail, sendPasswordResetEmail, sendEmailChangeOtpEmail } =
   await import('../../src/services/email.service.js');
 const { logger } = await import('../../src/config/logger.js');
 
@@ -89,7 +89,6 @@ describe('email.service', () => {
       expect(logger.info).toHaveBeenCalledWith(`OTP email sent to ${email}`);
     });
 
-    // 👇 Single call, uses toMatchObject — no double-invoke, no redundant mockRejectedValue
     it('should throw ApiError(500) with the correct message when Brevo fails', async () => {
       mockSendTransacEmail.mockRejectedValue(new Error('Brevo timeout'));
 
@@ -156,6 +155,63 @@ describe('email.service', () => {
 
       expect(logger.error).toHaveBeenCalledWith('Failed to send password reset email via Brevo', {
         error: '503 Service Unavailable',
+      });
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // sendEmailChangeOtpEmail
+  // ─────────────────────────────────────────────
+  describe('sendEmailChangeOtpEmail', () => {
+    const email = 'new-address@example.com';
+    const name = 'John Doe';
+    const otp = '789012';
+
+    it('should call Brevo with the email-change subject and body', async () => {
+      await sendEmailChangeOtpEmail(email, name, otp);
+
+      expect(mockSendTransacEmail).toHaveBeenCalledTimes(1);
+
+      const payload = mockSendTransacEmail.mock.calls[0][0];
+
+      expect(payload.subject).toBe('Confirm your new email on Authstack');
+      expect(payload.sender).toEqual({ name: SENDER_NAME, email: SENDER_EMAIL });
+      expect(payload.to).toEqual([{ email, name }]);
+      expect(payload.htmlContent).toContain(otp);
+      expect(payload.htmlContent).toContain('Confirm Your New Email');
+      // Critical: recipient may not recognize AuthStack yet — the email must
+      // reassure them that ignoring the code leaves their email unchanged.
+      expect(payload.htmlContent).toContain('Your email address will remain unchanged');
+    });
+
+    it('should HTML-escape the user-supplied name in the body', async () => {
+      const maliciousName = '<iframe src="evil"></iframe>';
+
+      await sendEmailChangeOtpEmail(email, maliciousName, otp);
+
+      const html = mockSendTransacEmail.mock.calls[0][0].htmlContent;
+
+      expect(html).not.toContain('<iframe');
+      expect(html).toContain('&lt;iframe src=&quot;evil&quot;&gt;&lt;/iframe&gt;');
+    });
+
+    it('should log success with the recipient email', async () => {
+      await sendEmailChangeOtpEmail(email, name, otp);
+
+      expect(logger.info).toHaveBeenCalledWith(`Email change OTP sent to ${email}`);
+    });
+
+    it('should throw ApiError(500) with the verification message when Brevo fails', async () => {
+      mockSendTransacEmail.mockRejectedValue(new Error('Network unreachable'));
+
+      await expect(sendEmailChangeOtpEmail(email, name, otp)).rejects.toMatchObject({
+        name: 'ApiError',
+        status: 500,
+        message: 'Failed to send verification email. Please try again later.',
+      });
+
+      expect(logger.error).toHaveBeenCalledWith('Failed to send email change OTP via Brevo', {
+        error: 'Network unreachable',
       });
     });
   });

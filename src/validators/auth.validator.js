@@ -31,10 +31,6 @@ export const loginSchema = Joi.object({
   password: loginPasswordField,
 });
 
-// currentPassword uses Joi.string().required() (not strongPasswordField) on
-// purpose: we verify it against the DB, not its format. Rejecting at the
-// validator would (a) leak that their current password doesn't meet our rules
-// and (b) run before bcrypt.compare even gets a chance to check it.
 export const changePasswordSchema = Joi.object({
   currentPassword: Joi.string().required().messages({
     'any.required': 'Current password is required.',
@@ -55,6 +51,27 @@ export const changePasswordSchema = Joi.object({
       'any.required': 'Please confirm your new password.',
       'string.empty': 'Please confirm your new password.',
     }),
+});
+
+// ─────────────────────────────────────────────
+// NEW: email change
+// ─────────────────────────────────────────────
+export const requestEmailChangeSchema = Joi.object({
+  newEmail: emailField,
+  currentPassword: Joi.string().required().messages({
+    'any.required': 'Current password is required.',
+    'string.empty': 'Current password is required.',
+  }),
+});
+
+export const verifyEmailChangeSchema = Joi.object({
+  newEmail: emailField,
+  otp: Joi.string().length(6).pattern(/^\d+$/).required().messages({
+    'any.required': 'OTP is required.',
+    'string.empty': 'OTP is required.',
+    'string.length': 'OTP must be exactly 6 digits.',
+    'string.pattern.base': 'OTP must contain only numbers.',
+  }),
 });
 
 export const forgotPasswordSchema = Joi.object({

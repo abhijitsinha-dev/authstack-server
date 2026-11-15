@@ -11,6 +11,8 @@ import {
   revokeSessionController,
   revokeOtherSessionsController,
   changePasswordController,
+  requestEmailChangeController,
+  verifyEmailChangeController,
   forgotPassword,
   resetPasswordController,
 } from '../controllers/auth.controller.js';
@@ -20,6 +22,8 @@ import {
   verifyOtpSchema,
   loginSchema,
   changePasswordSchema,
+  requestEmailChangeSchema,
+  verifyEmailChangeSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
 } from '../validators/auth.validator.js';
@@ -34,15 +38,13 @@ const DEV_LIMIT = 100;
 // ─────────────────────────────────────────────
 // Signup
 // ─────────────────────────────────────────────
-router.route('/signup/request-otp').post(
-  rateLimit({
-    limit: isProduction ? 5 : DEV_LIMIT,
-    window: '1 m',
-    prefix: 'ratelimit:req-otp',
-  }),
-  validate(requestOtpSchema),
-  requestOtp
-);
+router
+  .route('/signup/request-otp')
+  .post(
+    rateLimit({ limit: isProduction ? 5 : DEV_LIMIT, window: '1 m', prefix: 'ratelimit:req-otp' }),
+    validate(requestOtpSchema),
+    requestOtp
+  );
 
 router.route('/signup/resend-otp').post(
   rateLimit({
@@ -67,34 +69,28 @@ router.route('/signup/verify-otp').post(
 // ─────────────────────────────────────────────
 // Session
 // ─────────────────────────────────────────────
-router.route('/login').post(
-  rateLimit({
-    limit: isProduction ? 5 : DEV_LIMIT,
-    window: '1 m',
-    prefix: 'ratelimit:login',
-  }),
-  validate(loginSchema),
-  login
-);
+router
+  .route('/login')
+  .post(
+    rateLimit({ limit: isProduction ? 5 : DEV_LIMIT, window: '1 m', prefix: 'ratelimit:login' }),
+    validate(loginSchema),
+    login
+  );
 
-router.route('/refresh').post(
-  rateLimit({
-    limit: isProduction ? 30 : DEV_LIMIT,
-    window: '1 m',
-    prefix: 'ratelimit:refresh',
-  }),
-  refreshTokenController
-);
+router
+  .route('/refresh')
+  .post(
+    rateLimit({ limit: isProduction ? 30 : DEV_LIMIT, window: '1 m', prefix: 'ratelimit:refresh' }),
+    refreshTokenController
+  );
 
-router.route('/me').get(
-  rateLimit({
-    limit: isProduction ? 60 : DEV_LIMIT,
-    window: '1 m',
-    prefix: 'ratelimit:me',
-  }),
-  protect,
-  getMe
-);
+router
+  .route('/me')
+  .get(
+    rateLimit({ limit: isProduction ? 60 : DEV_LIMIT, window: '1 m', prefix: 'ratelimit:me' }),
+    protect,
+    getMe
+  );
 
 router
   .route('/sessions')
@@ -127,22 +123,45 @@ router.route('/sessions/:id').delete(
   revokeSessionController
 );
 
-router.route('/logout').post(
+router
+  .route('/logout')
+  .post(
+    rateLimit({ limit: isProduction ? 20 : DEV_LIMIT, window: '1 m', prefix: 'ratelimit:logout' }),
+    protect,
+    logout
+  );
+
+// ─────────────────────────────────────────────
+// Email change
+// ─────────────────────────────────────────────
+// Tight IP rate limit because each request sends an OTP email (Brevo cost)
+// and verifies the current password (bcrypt CPU). Cooldown in service layer
+// is 20 seconds per user, matching resend-otp.
+router.route('/change-email/request-otp').post(
   rateLimit({
-    limit: isProduction ? 20 : DEV_LIMIT,
-    window: '1 m',
-    prefix: 'ratelimit:logout',
+    limit: isProduction ? 3 : DEV_LIMIT,
+    window: '15 m',
+    prefix: 'ratelimit:change-email-req',
   }),
   protect,
-  logout
+  validate(requestEmailChangeSchema),
+  requestEmailChangeController
+);
+
+router.route('/change-email/verify-otp').post(
+  rateLimit({
+    limit: isProduction ? 5 : DEV_LIMIT,
+    window: '15 m',
+    prefix: 'ratelimit:change-email-verify',
+  }),
+  protect,
+  validate(verifyEmailChangeSchema),
+  verifyEmailChangeController
 );
 
 // ─────────────────────────────────────────────
-// Password operations
+// Password
 // ─────────────────────────────────────────────
-// Tighter rate limit than most endpoints — a stolen access token gives an
-// attacker at most 5 attempts per 15 min to guess the current password,
-// which combined with bcrypt's ~100ms cost makes brute-force infeasible.
 router.route('/change-password').post(
   rateLimit({
     limit: isProduction ? 5 : DEV_LIMIT,

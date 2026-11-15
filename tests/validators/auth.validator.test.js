@@ -3,6 +3,9 @@ import {
   resendOtpSchema,
   verifyOtpSchema,
   loginSchema,
+  changePasswordSchema, // 👈 NEW
+  requestEmailChangeSchema, // 👈 NEW
+  verifyEmailChangeSchema, // 👈 NEW
   forgotPasswordSchema,
   resetPasswordSchema,
 } from '../../src/validators/auth.validator.js';
@@ -49,7 +52,6 @@ describe('auth.validator', () => {
       expect(error.details[0].message).toContain('2');
     });
 
-    // 👇 Proves `.max(50)` actually fires (was previously untested)
     it('should reject a name longer than 50 characters', () => {
       const { error } = validate(requestOtpSchema, {
         ...validPayload,
@@ -242,11 +244,10 @@ describe('auth.validator', () => {
       expect(error).toBeUndefined();
     });
 
-    // 👇 CRITICAL: login uses loginPasswordField (NOT strongPasswordField).
-    // The service layer (loginUser) handles the weak-password rejection as
-    // part of its fast-fail path. If validation rejected here instead, an
-    // attacker could distinguish "weak password" from "wrong password" by
-    // looking at the HTTP status (400 vs 401) — breaking anti-enumeration.
+    // Login uses loginPasswordField (NOT strongPasswordField) so the service
+    // layer's fast-fail path is reachable. If validation rejected weak
+    // passwords here, an attacker could distinguish "weak password" (400)
+    // from "wrong password" (401) — breaking anti-enumeration.
     it('should NOT enforce strong password rules (weak passwords must reach the service)', () => {
       const { error, value } = validate(loginSchema, {
         email: 'john@example.com',
@@ -262,9 +263,6 @@ describe('auth.validator', () => {
       expect(error.details[0].path).toContain('email');
     });
 
-    // 👇 Merged the two duplicate "bad email" tests into one.
-    // Login deliberately returns a vague message (anti-enumeration) — proving
-    // both the path AND the exact string in one place makes the intent obvious.
     it('should return the generic "Invalid email or password." message for bad emails', () => {
       const { error } = validate(loginSchema, { ...validPayload, email: 'not-an-email' });
       expect(error).toBeDefined();
@@ -287,6 +285,291 @@ describe('auth.validator', () => {
     });
   });
 
+  // ─────────────────────────────────────────────
+  // NEW: changePasswordSchema
+  // ─────────────────────────────────────────────
+  describe('changePasswordSchema', () => {
+    const validPayload = {
+      currentPassword: 'OldPassword123!',
+      newPassword: 'NewPassword456!',
+      confirmPassword: 'NewPassword456!',
+    };
+
+    it('should accept a fully valid payload', () => {
+      const { error } = validate(changePasswordSchema, validPayload);
+      expect(error).toBeUndefined();
+    });
+
+    it('should reject a missing currentPassword', () => {
+      const { error } = validate(changePasswordSchema, {
+        ...validPayload,
+        currentPassword: undefined,
+      });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('currentPassword');
+      expect(error.details[0].message).toBe('Current password is required.');
+    });
+
+    it('should reject an empty currentPassword', () => {
+      const { error } = validate(changePasswordSchema, { ...validPayload, currentPassword: '' });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('currentPassword');
+      expect(error.details[0].message).toBe('Current password is required.');
+    });
+
+    // currentPassword uses plain Joi.string().required() — NOT strongPasswordField.
+    // A weak current password must still reach bcrypt.compare; rejecting it here
+    // would short-circuit the "is this the actual password" check.
+    it('should NOT enforce strong rules on currentPassword (weak must reach the service)', () => {
+      const { error } = validate(changePasswordSchema, {
+        ...validPayload,
+        currentPassword: 'weak',
+      });
+      expect(error).toBeUndefined();
+    });
+
+    it('should reject a weak newPassword', () => {
+      const { error } = validate(changePasswordSchema, {
+        ...validPayload,
+        newPassword: 'weak',
+        confirmPassword: 'weak',
+      });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('newPassword');
+      expect(error.details[0].message).toContain('8');
+    });
+
+    it('should reject a mismatched confirmPassword', () => {
+      const { error } = validate(changePasswordSchema, {
+        ...validPayload,
+        newPassword: 'NewPassword456!',
+        confirmPassword: 'DifferentPassword789!',
+      });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('confirmPassword');
+      expect(error.details[0].message).toBe('Passwords do not match.');
+    });
+
+    it('should reject a missing confirmPassword', () => {
+      const { error } = validate(changePasswordSchema, {
+        ...validPayload,
+        confirmPassword: undefined,
+      });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('confirmPassword');
+      expect(error.details[0].message).toBe('Please confirm your new password.');
+    });
+
+    it('should reject an empty confirmPassword', () => {
+      const { error } = validate(changePasswordSchema, {
+        ...validPayload,
+        confirmPassword: '',
+      });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('confirmPassword');
+      expect(error.details[0].message).toBe('Please confirm your new password.');
+    });
+
+    it('should strip unknown fields when stripUnknown is enabled', () => {
+      const { error, value } = validate(changePasswordSchema, {
+        ...validPayload,
+        isAdmin: true,
+      });
+      expect(error).toBeUndefined();
+      expect(value.isAdmin).toBeUndefined();
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // NEW: requestEmailChangeSchema
+  // ─────────────────────────────────────────────
+  describe('requestEmailChangeSchema', () => {
+    const validPayload = {
+      newEmail: 'new@example.com',
+      currentPassword: 'OldPassword123!',
+    };
+
+    it('should accept a fully valid payload', () => {
+      const { error, value } = validate(requestEmailChangeSchema, validPayload);
+      expect(error).toBeUndefined();
+      expect(value).toEqual(validPayload);
+    });
+
+    it('should reject a missing newEmail', () => {
+      const { error } = validate(requestEmailChangeSchema, {
+        ...validPayload,
+        newEmail: undefined,
+      });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('newEmail');
+      expect(error.details[0].message).toBe('Email is required.');
+    });
+
+    it('should reject an empty newEmail', () => {
+      const { error } = validate(requestEmailChangeSchema, { ...validPayload, newEmail: '' });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('newEmail');
+      expect(error.details[0].message).toBe('Email is required.');
+    });
+
+    it('should reject an invalid newEmail format', () => {
+      const { error } = validate(requestEmailChangeSchema, {
+        ...validPayload,
+        newEmail: 'not-an-email',
+      });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('newEmail');
+      expect(error.details[0].message).toBe('Please provide a valid email address.');
+    });
+
+    it('should lowercase newEmail automatically', () => {
+      const { error, value } = validate(requestEmailChangeSchema, {
+        ...validPayload,
+        newEmail: 'NEW@EXAMPLE.COM',
+      });
+      expect(error).toBeUndefined();
+      expect(value.newEmail).toBe('new@example.com');
+    });
+
+    it('should reject a missing currentPassword', () => {
+      const { error } = validate(requestEmailChangeSchema, {
+        ...validPayload,
+        currentPassword: undefined,
+      });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('currentPassword');
+      expect(error.details[0].message).toBe('Current password is required.');
+    });
+
+    it('should reject an empty currentPassword', () => {
+      const { error } = validate(requestEmailChangeSchema, {
+        ...validPayload,
+        currentPassword: '',
+      });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('currentPassword');
+      expect(error.details[0].message).toBe('Current password is required.');
+    });
+
+    // Like changePassword, currentPassword here uses plain Joi.string().required()
+    // so the weak-password path reaches bcrypt.compare in the service layer.
+    it('should NOT enforce strong rules on currentPassword', () => {
+      const { error } = validate(requestEmailChangeSchema, {
+        ...validPayload,
+        currentPassword: 'weak',
+      });
+      expect(error).toBeUndefined();
+    });
+
+    it('should strip unknown fields when stripUnknown is enabled', () => {
+      const { error, value } = validate(requestEmailChangeSchema, {
+        ...validPayload,
+        otp: '123456',
+        isAdmin: true,
+      });
+      expect(error).toBeUndefined();
+      expect(value.otp).toBeUndefined();
+      expect(value.isAdmin).toBeUndefined();
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // NEW: verifyEmailChangeSchema
+  // ─────────────────────────────────────────────
+  describe('verifyEmailChangeSchema', () => {
+    const validPayload = {
+      newEmail: 'new@example.com',
+      otp: '123456',
+    };
+
+    it('should accept a fully valid payload', () => {
+      const { error, value } = validate(verifyEmailChangeSchema, validPayload);
+      expect(error).toBeUndefined();
+      expect(value).toEqual(validPayload);
+    });
+
+    it('should reject a missing newEmail', () => {
+      const { error } = validate(verifyEmailChangeSchema, {
+        ...validPayload,
+        newEmail: undefined,
+      });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('newEmail');
+    });
+
+    it('should reject an invalid newEmail format', () => {
+      const { error } = validate(verifyEmailChangeSchema, {
+        ...validPayload,
+        newEmail: 'not-an-email',
+      });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('newEmail');
+      expect(error.details[0].message).toBe('Please provide a valid email address.');
+    });
+
+    it('should lowercase newEmail automatically', () => {
+      const { error, value } = validate(verifyEmailChangeSchema, {
+        ...validPayload,
+        newEmail: 'NEW@EXAMPLE.COM',
+      });
+      expect(error).toBeUndefined();
+      expect(value.newEmail).toBe('new@example.com');
+    });
+
+    it('should reject a missing OTP', () => {
+      const { error } = validate(verifyEmailChangeSchema, {
+        ...validPayload,
+        otp: undefined,
+      });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('otp');
+      expect(error.details[0].message).toBe('OTP is required.');
+    });
+
+    it('should reject an empty OTP', () => {
+      const { error } = validate(verifyEmailChangeSchema, { ...validPayload, otp: '' });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('otp');
+      expect(error.details[0].message).toBe('OTP is required.');
+    });
+
+    it('should reject an OTP that is not exactly 6 digits', () => {
+      const { error: errorShort } = validate(verifyEmailChangeSchema, {
+        ...validPayload,
+        otp: '123',
+      });
+      expect(errorShort).toBeDefined();
+      expect(errorShort.details[0].message).toContain('6 digits');
+
+      const { error: errorLong } = validate(verifyEmailChangeSchema, {
+        ...validPayload,
+        otp: '1234567',
+      });
+      expect(errorLong).toBeDefined();
+      expect(errorLong.details[0].message).toContain('6 digits');
+    });
+
+    it('should reject a non-numeric OTP', () => {
+      const { error } = validate(verifyEmailChangeSchema, {
+        ...validPayload,
+        otp: '12345a',
+      });
+      expect(error).toBeDefined();
+      expect(error.details[0].message).toContain('numbers');
+    });
+
+    it('should strip unknown fields when stripUnknown is enabled', () => {
+      const { error, value } = validate(verifyEmailChangeSchema, {
+        ...validPayload,
+        currentPassword: 'OldPassword123!',
+        isAdmin: true,
+      });
+      expect(error).toBeUndefined();
+      expect(value.currentPassword).toBeUndefined();
+      expect(value.isAdmin).toBeUndefined();
+    });
+  });
+
   describe('forgotPasswordSchema', () => {
     it('should accept a valid email', () => {
       const { error } = validate(forgotPasswordSchema, { email: 'john@example.com' });
@@ -303,7 +586,6 @@ describe('auth.validator', () => {
       const { error } = validate(forgotPasswordSchema, { email: 'not-an-email' });
       expect(error).toBeDefined();
       expect(error.details[0].path).toContain('email');
-      // Same anti-enumeration-friendly message as the rest of the reset flow
       expect(error.details[0].message).toBe('Please provide a valid email address.');
     });
 
@@ -333,10 +615,6 @@ describe('auth.validator', () => {
       expect(error.details[0].path).toContain('email');
     });
 
-    // 👇 KEY TEST: proves we use emailField, NOT loginEmailField.
-    // On password reset, a typo'd email should say "Please provide a valid
-    // email address." — not the anti-enumeration "Invalid email or password."
-    // message which belongs on the login endpoint only.
     it('should return "Please provide a valid email address." for bad emails (NOT the login message)', () => {
       const { error } = validate(resetPasswordSchema, {
         ...validPayload,
@@ -380,10 +658,8 @@ describe('auth.validator', () => {
       expect(error.details[0].message).toContain('8');
     });
 
-    // 👇 Proves `.max(72)` fires — bcrypt truncates at 72 bytes, so silently
-    // allowing longer passwords would create a subtle security gap
     it('should reject a new password longer than 72 characters', () => {
-      const longPassword = 'A1!' + 'a'.repeat(70); // 73 chars total
+      const longPassword = 'A1!' + 'a'.repeat(70);
       const { error } = validate(resetPasswordSchema, {
         ...validPayload,
         newPassword: longPassword,

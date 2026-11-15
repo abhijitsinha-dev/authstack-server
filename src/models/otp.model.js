@@ -18,8 +18,13 @@ const otpSchema = new mongoose.Schema(
     attempts: { type: Number, default: 0 },
     purpose: {
       type: String,
-      enum: ['signup', 'reset'],
+      enum: ['signup', 'reset', 'email-change'],
       required: true,
+    },
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      index: true,
     },
   },
   { timestamps: true }
