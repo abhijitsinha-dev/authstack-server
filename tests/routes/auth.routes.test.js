@@ -417,9 +417,6 @@ describe('GET /api/v1/auth/me', () => {
   });
 });
 
-// ─────────────────────────────────────────────
-// NEW: GET /sessions
-// ─────────────────────────────────────────────
 describe('GET /api/v1/auth/sessions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -470,9 +467,6 @@ describe('GET /api/v1/auth/sessions', () => {
   });
 });
 
-// ─────────────────────────────────────────────
-// NEW: DELETE /sessions/:id
-// ─────────────────────────────────────────────
 describe('DELETE /api/v1/auth/sessions/:id', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -503,7 +497,6 @@ describe('DELETE /api/v1/auth/sessions/:id', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.message).toContain('Cannot revoke the current session');
-    // Guard short-circuits before hitting the DB
     expect(findOneAndUpdateSpy).not.toHaveBeenCalled();
   });
 
@@ -526,9 +519,6 @@ describe('DELETE /api/v1/auth/sessions/:id', () => {
   });
 });
 
-// ─────────────────────────────────────────────
-// NEW: DELETE /sessions
-// ─────────────────────────────────────────────
 describe('DELETE /api/v1/auth/sessions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -547,7 +537,6 @@ describe('DELETE /api/v1/auth/sessions', () => {
     expect(response.body.success).toBe(true);
     expect(response.body.data.revokedCount).toBe(2);
 
-    // Proves the current session ID is passed to the $ne filter
     const filter = Session.updateMany.mock.calls[0][0];
     expect(filter._id).toEqual({ $ne: 's1' });
   });
@@ -592,6 +581,158 @@ describe('POST /api/v1/auth/logout', () => {
   it('should return 401 without a valid token', async () => {
     const response = await request(app).post('/api/v1/auth/logout');
     expect(response.status).toBe(401);
+  });
+});
+
+// ─────────────────────────────────────────────
+// NEW: POST /change-password
+// ─────────────────────────────────────────────
+describe('POST /api/v1/auth/change-password', () => {
+  let mockUser;
+  let selectMock;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    mockUser = {
+      _id: 'u1',
+      email: 'test@example.com',
+      password: 'hashed-old-password',
+      save: jest.fn(),
+    };
+    selectMock = jest.fn().mockResolvedValue(mockUser);
+    jest.spyOn(User, 'findById').mockReturnValue({ select: selectMock });
+  });
+
+  it('should return 200 and revoke other sessions on success', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
+    jest.spyOn(bcrypt, 'compare').mockResolvedValue(true);
+    jest.spyOn(Session, 'updateMany').mockResolvedValue({ modifiedCount: 2 });
+
+    const response = await request(app)
+      .post('/api/v1/auth/change-password')
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        currentPassword: 'OldPassword123!',
+        newPassword: 'NewPassword456!',
+        confirmPassword: 'NewPassword456!',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.message).toBe('Password changed. Other devices have been logged out.');
+    expect(response.body.data.revokedCount).toBe(2);
+
+    // Current session is excluded from revocation
+    const filter = Session.updateMany.mock.calls[0][0];
+    expect(filter._id).toEqual({ $ne: 's1' });
+    expect(mockUser.save).toHaveBeenCalled();
+  });
+
+  it('should return 200 with the generic message when no other sessions exist', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
+    jest.spyOn(bcrypt, 'compare').mockResolvedValue(true);
+    jest.spyOn(Session, 'updateMany').mockResolvedValue({ modifiedCount: 0 });
+
+    const response = await request(app)
+      .post('/api/v1/auth/change-password')
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        currentPassword: 'OldPassword123!',
+        newPassword: 'NewPassword456!',
+        confirmPassword: 'NewPassword456!',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.message).toBe('Password changed successfully.');
+    expect(response.body.data.revokedCount).toBe(0);
+  });
+
+  it('should return 401 if the current password is incorrect', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
+    jest.spyOn(bcrypt, 'compare').mockResolvedValue(false);
+
+    const response = await request(app)
+      .post('/api/v1/auth/change-password')
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        currentPassword: 'WrongPassword123!',
+        newPassword: 'NewPassword456!',
+        confirmPassword: 'NewPassword456!',
+      });
+
+    expect(response.status).toBe(401);
+    expect(response.body.message).toBe('Current password is incorrect.');
+    expect(mockUser.save).not.toHaveBeenCalled();
+  });
+
+  it('should return 400 if the new password equals the current password', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
+    jest.spyOn(bcrypt, 'compare').mockResolvedValue(true);
+
+    const response = await request(app)
+      .post('/api/v1/auth/change-password')
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        currentPassword: 'OldPassword123!',
+        newPassword: 'OldPassword123!',
+        confirmPassword: 'OldPassword123!',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('New password must be different from current password.');
+  });
+
+  it('should return 400 for mismatched confirmPassword (Joi)', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
+
+    const response = await request(app)
+      .post('/api/v1/auth/change-password')
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        currentPassword: 'OldPassword123!',
+        newPassword: 'NewPassword456!',
+        confirmPassword: 'DifferentPassword456!',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('Passwords do not match.');
+    // Joi runs BEFORE the controller — service is never called
+    expect(User.findById).not.toHaveBeenCalled();
+  });
+
+  it('should return 400 for a weak new password (Joi)', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
+
+    const response = await request(app)
+      .post('/api/v1/auth/change-password')
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        currentPassword: 'OldPassword123!',
+        newPassword: 'weak',
+        confirmPassword: 'weak',
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toContain('Password must be at least 8 characters long');
+    expect(User.findById).not.toHaveBeenCalled();
+  });
+
+  it('should return 401 without a token', async () => {
+    const response = await request(app).post('/api/v1/auth/change-password').send({
+      currentPassword: 'OldPassword123!',
+      newPassword: 'NewPassword456!',
+      confirmPassword: 'NewPassword456!',
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.body.message).toContain('no token');
   });
 });
 

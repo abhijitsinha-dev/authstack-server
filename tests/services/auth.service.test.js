@@ -26,10 +26,10 @@ jest.unstable_mockModule('../../src/models/otp.model.js', () => ({
 jest.unstable_mockModule('../../src/models/session.model.js', () => ({
   default: {
     create: jest.fn(),
-    find: jest.fn(), // 👈 NEW — listUserSessions
+    find: jest.fn(),
     findById: jest.fn(),
     findByIdAndUpdate: jest.fn(),
-    findOneAndUpdate: jest.fn(), // 👈 NEW — revokeSession
+    findOneAndUpdate: jest.fn(),
     updateMany: jest.fn(),
   },
 }));
@@ -89,10 +89,10 @@ const {
   logoutUser,
   refreshTokens,
   getCurrentUser,
-  // 👇 NEW
   listUserSessions,
   revokeSession,
   revokeOtherSessions,
+  changePassword, // 👈 NEW
   requestPasswordReset,
   resetPassword,
 } = await import('../../src/services/auth.service.js');
@@ -102,8 +102,6 @@ const {
 // ─────────────────────────────────────────────
 const inMinutes = (n) => new Date(Date.now() + n * 60 * 1000);
 
-// Builds a mock matching Mongoose's `find().sort().select().lean()` chain.
-// Exposing the inner mocks lets tests assert on sort/select arguments.
 const buildFindChain = (sessions) => {
   const chain = {
     sort: jest.fn(),
@@ -475,7 +473,6 @@ describe('auth.service', () => {
       const mockSession = {
         isRevoked: false,
         refreshTokenHash: 'fake-hash',
-        // lastUsedAt: undefined (legacy)
         save: jest.fn(),
       };
       Session.findById.mockResolvedValue(mockSession);
@@ -536,9 +533,6 @@ describe('auth.service', () => {
     });
   });
 
-  // ─────────────────────────────────────────────
-  // NEW: listUserSessions
-  // ─────────────────────────────────────────────
   describe('listUserSessions', () => {
     const userId = 'u1';
     const currentSessionId = 's1';
@@ -588,7 +582,6 @@ describe('auth.service', () => {
       expect(filter.isRevoked).toBe(false);
       expect(filter.expiresAt).toEqual({ $gt: expect.any(Date) });
 
-      // sorted by most recently used, selects without the hash
       expect(chain.sort).toHaveBeenCalledWith({ lastUsedAt: -1 });
       expect(chain.select).toHaveBeenCalledWith('-refreshTokenHash -__v');
       expect(chain.lean).toHaveBeenCalled();
@@ -603,9 +596,6 @@ describe('auth.service', () => {
     });
   });
 
-  // ─────────────────────────────────────────────
-  // NEW: revokeSession
-  // ─────────────────────────────────────────────
   describe('revokeSession', () => {
     const sessionId = 's2';
     const userId = 'u1';
@@ -616,7 +606,6 @@ describe('auth.service', () => {
         revokeSession({ sessionId: currentSessionId, userId, currentSessionId })
       ).rejects.toThrow('Cannot revoke the current session');
 
-      // Proves the guard short-circuits before hitting the DB
       expect(Session.findOneAndUpdate).not.toHaveBeenCalled();
     });
 
@@ -628,14 +617,12 @@ describe('auth.service', () => {
       );
     });
 
-    // 🚨 SECURITY: the IDOR-prevention test — this is the most important one in this block
     it('should scope the query by userId to prevent IDOR', async () => {
       Session.findOneAndUpdate.mockResolvedValue({ _id: 's2', isRevoked: true });
 
       await revokeSession({ sessionId, userId, currentSessionId });
 
       const filter = Session.findOneAndUpdate.mock.calls[0][0];
-      // Without `user: userId`, any authenticated user could revoke anyone's session
       expect(filter.user).toBe(userId);
       expect(filter._id).toBe(sessionId);
       expect(filter.isRevoked).toBe(false);
@@ -652,9 +639,6 @@ describe('auth.service', () => {
     });
   });
 
-  // ─────────────────────────────────────────────
-  // NEW: revokeOtherSessions
-  // ─────────────────────────────────────────────
   describe('revokeOtherSessions', () => {
     const userId = 'u1';
     const currentSessionId = 's1';
@@ -667,8 +651,6 @@ describe('auth.service', () => {
       expect(result).toEqual({ revokedCount: 3 });
     });
 
-    // 📌 DESIGN: the $ne on _id is the whole feature — without it, this becomes
-    // "log out everywhere" and the caller loses their own session.
     it('should exclude the current session via $ne filter', async () => {
       Session.updateMany.mockResolvedValue({ modifiedCount: 0 });
 
@@ -681,14 +663,104 @@ describe('auth.service', () => {
       expect(filter.expiresAt).toEqual({ $gt: expect.any(Date) });
     });
 
-    // 📌 IDEMPOTENCE: a user with only their current session calling "revoke all
-    // others" should succeed with count 0 — not error, not throw.
     it('should succeed with revokedCount: 0 when no other sessions exist', async () => {
       Session.updateMany.mockResolvedValue({ modifiedCount: 0 });
 
       const result = await revokeOtherSessions({ userId, currentSessionId });
 
       expect(result.revokedCount).toBe(0);
+    });
+  });
+
+  // ─────────────────────────────────────────────
+  // NEW: changePassword
+  // ─────────────────────────────────────────────
+  describe('changePassword', () => {
+    const payload = {
+      userId: 'u1',
+      currentSessionId: 's1',
+      currentPassword: 'OldPassword123!',
+      newPassword: 'NewPassword456!',
+    };
+    let mockUser;
+    let selectMock;
+
+    beforeEach(() => {
+      mockUser = {
+        _id: 'u1',
+        email: 'test@example.com',
+        password: 'hashed-old-password',
+        save: jest.fn(),
+      };
+      selectMock = jest.fn().mockResolvedValue(mockUser);
+      User.findById.mockReturnValue({ select: selectMock });
+    });
+
+    it('should select +password field when fetching the user', async () => {
+      bcrypt.compare.mockResolvedValue(true);
+      Session.updateMany.mockResolvedValue({ modifiedCount: 0 });
+
+      await changePassword(payload);
+
+      expect(User.findById).toHaveBeenCalledWith('u1');
+      // Critical: without +password, bcrypt.compare receives undefined
+      expect(selectMock).toHaveBeenCalledWith('+password');
+    });
+
+    it('should throw 401 if the user no longer exists (stale session)', async () => {
+      User.findById.mockReturnValue({ select: jest.fn().mockResolvedValue(null) });
+
+      await expect(changePassword(payload)).rejects.toThrow(
+        'Session is no longer valid. Please log in again.'
+      );
+      expect(bcrypt.compare).not.toHaveBeenCalled();
+    });
+
+    it('should throw 401 if the current password is incorrect', async () => {
+      bcrypt.compare.mockResolvedValue(false);
+
+      await expect(changePassword(payload)).rejects.toThrow('Current password is incorrect.');
+      expect(mockUser.save).not.toHaveBeenCalled();
+      expect(Session.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should throw 400 if the new password is the same as the current password', async () => {
+      bcrypt.compare.mockResolvedValue(true);
+
+      await expect(
+        changePassword({ ...payload, newPassword: payload.currentPassword })
+      ).rejects.toThrow('New password must be different from current password.');
+      expect(mockUser.save).not.toHaveBeenCalled();
+      expect(Session.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should update password, save, and revoke other sessions on success', async () => {
+      bcrypt.compare.mockResolvedValue(true);
+      Session.updateMany.mockResolvedValue({ modifiedCount: 2 });
+
+      const result = await changePassword(payload);
+
+      expect(bcrypt.compare).toHaveBeenCalledWith('OldPassword123!', 'hashed-old-password');
+      expect(mockUser.password).toBe('NewPassword456!');
+      expect(mockUser.save).toHaveBeenCalled();
+
+      // 🔒 The current session is EXCLUDED via $ne — this is the entire reason
+      // change-password exists as a security action
+      expect(Session.updateMany).toHaveBeenCalledWith(
+        { user: 'u1', _id: { $ne: 's1' }, isRevoked: false },
+        expect.objectContaining({ isRevoked: true, revokedAt: expect.any(Date) })
+      );
+
+      expect(result).toEqual({ revokedCount: 2 });
+    });
+
+    it('should return revokedCount: 0 when no other sessions exist (idempotent)', async () => {
+      bcrypt.compare.mockResolvedValue(true);
+      Session.updateMany.mockResolvedValue({ modifiedCount: 0 });
+
+      const result = await changePassword(payload);
+
+      expect(result).toEqual({ revokedCount: 0 });
     });
   });
 
