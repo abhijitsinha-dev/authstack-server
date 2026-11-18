@@ -177,3 +177,50 @@ components:
                 is never counted — it stays active so the caller doesn't get
                 logged out of the device they're using to change the password.
               example: 2
+
+    RequestEmailChangeSuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: Verification code sent to your new email.
+        data:
+          type: object
+          properties:
+            newEmail:
+              type: string
+              format: email
+              description: The new email address the OTP was sent to (for UI confirmation).
+              example: new-address@example.com
+
+    VerifyEmailChangeSuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          description: |
+            Two variants depending on whether other sessions existed:
+            - "Email changed. Other devices have been logged out." — when revokedCount > 0
+            - "Email changed successfully." — when revokedCount === 0
+          example: Email changed. Other devices have been logged out.
+        data:
+          type: object
+          properties:
+            revokedCount:
+              type: integer
+              description: |
+                Number of OTHER sessions revoked. The current session is
+                never counted — it stays active so the caller doesn't get
+                logged out of the device they're using to change the email.
+              example: 2
+            newEmail:
+              type: string
+              format: email
+              description: The new email address (now set on the account).
+              example: new-address@example.com

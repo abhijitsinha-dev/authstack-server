@@ -2,7 +2,7 @@
 
 Backend API for the authstack project — an Express + MongoDB service built for serverless deployment on Vercel, with a dedicated BullMQ worker for background processing.
 
-> **Status:** Authentication flow (signup, login, refresh, logout, current user, session management, change password) and password reset are fully implemented and tested. Core auth, secure JWT session management, and modular API documentation are production-ready.
+> **Status:** Authentication flow (signup, login, refresh, logout, current user, session management, change password, change email) and password reset are fully implemented and tested. Core auth, secure JWT session management, and modular API documentation are production-ready.
 
 ---
 
@@ -13,6 +13,7 @@ Backend API for the authstack project — an Express + MongoDB service built for
 - **Current User:** `GET /me` for cold-start hydration, so clients can restore session state without a full login round-trip.
 - **Session Management:** List all active sessions across devices, revoke a specific session, or log out of all other devices. Detects which session is making the current request so the UI can highlight "This device".
 - **Change Password:** Users update their password by providing their current password. All other sessions are revoked on success, keeping the current device logged in.
+- **Change Email:** Users change their account email via a password-verified OTP flow. The OTP goes to the new address (proof of possession) and all other sessions are revoked on success.
 - **Password Reset:** Forgot-password + reset-password with 6-digit OTP via email. All active sessions are revoked on successful reset.
 - **Background Jobs:** BullMQ + Upstash Redis for asynchronous email delivery (signup, password reset).
 - **Defense in Depth:** IP-based rate limiting (Upstash), per-email cooldowns, and OTP brute-force lockout (max 5 attempts).
@@ -27,7 +28,8 @@ Backend API for the authstack project — an Express + MongoDB service built for
 - **Atomic OTP consumption** — `findOneAndDelete` prevents concurrent-replay password hijacks.
 - **Refresh token reuse detection** — replaying a rotated token revokes the session; detects leaked or cached tokens.
 - **Session IDOR prevention** — session revoke endpoints scope queries by `user`, so a user cannot revoke another user's session even with a valid ID.
-- **Current-password verification on change** — requires the user's existing password, not just a valid access token. Closes the 15-minute window where a stolen access token could be used for account takeover via password change.
+- **Current-password verification on change** — both password and email changes require the user's existing password, not just a valid access token. Closes the 15-minute window where a stolen access token could be used for account takeover.
+- **User-scoped email-change OTPs** — OTPs for email change carry a `userId`, so two users requesting the same new address don't collide and stale OTPs for old targets can be safely superseded.
 - **Two-tier OTP hashing** — bcrypt for the 6-digit OTP (slow, prevents offline brute-force); SHA-256 for the high-entropy refresh token (fast, allows DB lookup).
 - **HTML-escaped emails** — user-supplied `name` is escaped before interpolation, preventing markup injection in transactional emails.
 - **Session rotation on reset** — every successful password reset revokes all prior sessions.
@@ -205,6 +207,25 @@ All business logic routes are versioned under `/api/v1`. Rate limits shown below
 - **Rate Limit:** 20 req/min.
 - **Errors:** `401` (unauthorized), `404` (session already gone), `500`.
 
+#### Email Change
+
+**`POST /change-email/request-otp`**
+
+- **Requires:** Bearer Token
+- **Body:** `{ newEmail, currentPassword }`
+- **Description:** Step 1 of email change. Verifies the current password and sends a 6-digit OTP **synchronously** to the new email address. The OTP proves possession of the new address; the password is proof of identity (not just of session).
+- **Cooldown:** 20 sec per user + 3 req/15 min per IP. Each request sends a real email (Brevo cost) and runs bcrypt.
+- **Errors:** `400` (invalid email, same as current, missing password), `401` (unauthorized or wrong password), `409` (email already taken), `429` (cooldown or rate limit), `500`.
+- **Limitation:** notification to the old email address is not yet implemented — an industry-standard follow-up.
+
+**`POST /change-email/verify-otp`**
+
+- **Requires:** Bearer Token
+- **Body:** `{ newEmail, otp }`
+- **Description:** Step 2 of email change. Verifies the OTP sent to the new address, then commits the change. **All other sessions are revoked** on success (current stays active). The OTP is consumed atomically with `findOneAndDelete` before the email update — a concurrent replay cannot hijack the change. A pre-save collision check catches the case where someone else registered the address during the OTP window.
+- **Rate Limit:** 5 req/15 min.
+- **Errors:** `400` (invalid/expired/used OTP, same email), `401` (unauthorized), `409` (email claimed during OTP window), `429` (lockout or rate limit), `500`.
+
 #### Password
 
 **`POST /change-password`**
@@ -287,7 +308,7 @@ server/
 │   ├── middlewares/              # Auth, Validation, Error, Rate Limiting
 │   ├── models/                   # Mongoose schemas
 │   │   ├── user.model.js
-│   │   ├── otp.model.js          # purpose: 'signup' | 'reset' + compound index
+│   │   ├── otp.model.js          # purpose: 'signup' | 'reset' | 'email-change' + userId
 │   │   └── session.model.js      # isRevoked + revokedAt + lastUsedAt
 │   ├── queues/                   # BullMQ queue definitions
 │   ├── routes/                   # Express routers (code-only, no JSDoc)
@@ -346,7 +367,3 @@ We welcome contributions of all kinds! Please read our **[Contributing Guide](./
 ## License
 
 This project is open source under the **ISC License** — see [LICENSE](./LICENSE) for details.
-
-```
-
-```
