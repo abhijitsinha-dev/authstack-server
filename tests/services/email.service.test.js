@@ -59,6 +59,15 @@ describe('email.service', () => {
       expect(payload.htmlContent).toContain(`Welcome to Authstack, ${name}!`);
     });
 
+    it('should send signup email without a name when none has been set', async () => {
+      await sendSignupOtpEmail(email, undefined, otp);
+
+      const payload = mockSendTransacEmail.mock.calls[0][0];
+      expect(payload.to).toEqual([{ email }]);
+      expect(payload.htmlContent).toContain('Welcome to Authstack!');
+      expect(payload.htmlContent).not.toContain('undefined');
+    });
+
     // 🛡️ SECURITY: the XSS fix — user-controlled `name` must be escaped
     it('should HTML-escape the user-supplied name to prevent markup injection', async () => {
       const maliciousName = '<img src=x onerror=alert(1)>';

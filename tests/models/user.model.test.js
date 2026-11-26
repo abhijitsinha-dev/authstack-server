@@ -49,6 +49,16 @@ describe('User Model', () => {
     expect(isMatch).toBe(true);
   });
 
+  it('should allow creating a user without a name', async () => {
+    const user = new User({
+      email: 'noname@example.com',
+      password: 'Password123!',
+    });
+
+    await expect(user.save()).resolves.toBeDefined();
+    expect(user.name).toBeUndefined();
+  });
+
   it('should not re-hash the password if it has not been modified', async () => {
     // 1. Create and save the user
     const user = new User(validUser);

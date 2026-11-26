@@ -18,7 +18,7 @@ const MAX_OTP_ATTEMPTS = 5;
 // OTP validity window — must match the expiresAt set when creating the OTP
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
-export const requestSignupOtp = async ({ name, email, password }) => {
+export const requestSignupOtp = async ({ email, password }) => {
   const existingUser = await User.findOne({ email });
 
   if (existingUser && existingUser.isVerified) {
@@ -29,7 +29,7 @@ export const requestSignupOtp = async ({ name, email, password }) => {
     await User.deleteOne({ _id: existingUser._id });
   }
 
-  await User.create({ name, email, password });
+  await User.create({ email, password });
 
   const { otp, hashedOtp } = await generateHashedOtp();
   const expiresAt = new Date(Date.now() + OTP_TTL_MS);
@@ -37,7 +37,7 @@ export const requestSignupOtp = async ({ name, email, password }) => {
   await Otp.deleteMany({ email, purpose: 'signup' });
   await Otp.create({ email, codeHash: hashedOtp, expiresAt, purpose: 'signup' });
 
-  await emailQueue.add('send-otp', { email, name, otp });
+  await emailQueue.add('send-otp', { email, otp });
 };
 
 export const resendSignupOtp = async ({ email }) => {

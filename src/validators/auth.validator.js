@@ -2,12 +2,6 @@ import Joi from 'joi';
 import { emailField, strongPasswordField, loginEmailField, loginPasswordField } from './fields.js';
 
 export const requestOtpSchema = Joi.object({
-  name: Joi.string().trim().min(2).max(50).required().messages({
-    'any.required': 'Name is required.',
-    'string.empty': 'Name is required.',
-    'string.min': 'Name must be at least 2 characters long.',
-    'string.max': 'Name must be less than 50 characters long.',
-  }),
   email: emailField,
   password: strongPasswordField,
 });

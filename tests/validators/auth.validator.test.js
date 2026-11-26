@@ -21,53 +21,20 @@ const validate = (schema, payload) =>
 describe('auth.validator', () => {
   describe('requestOtpSchema', () => {
     const validPayload = {
-      name: 'John Doe',
       email: 'john@example.com',
       password: 'Password123!',
     };
 
-    it('should accept a fully valid payload', () => {
+    it('should accept a valid payload without a name', () => {
       const { error, value } = validate(requestOtpSchema, validPayload);
       expect(error).toBeUndefined();
       expect(value).toEqual(validPayload);
     });
 
-    it('should reject a missing name', () => {
-      const { error } = validate(requestOtpSchema, { ...validPayload, name: undefined });
-      expect(error).toBeDefined();
-      expect(error.details[0].path).toContain('name');
-      expect(error.details[0].message).toBe('Name is required.');
-    });
-
-    it('should reject an empty name', () => {
-      const { error } = validate(requestOtpSchema, { ...validPayload, name: '' });
-      expect(error).toBeDefined();
-      expect(error.details[0].path).toContain('name');
-      expect(error.details[0].message).toBe('Name is required.');
-    });
-
-    it('should reject a name shorter than 2 characters', () => {
-      const { error } = validate(requestOtpSchema, { ...validPayload, name: 'J' });
-      expect(error).toBeDefined();
-      expect(error.details[0].message).toContain('2');
-    });
-
-    it('should reject a name longer than 50 characters', () => {
-      const { error } = validate(requestOtpSchema, {
-        ...validPayload,
-        name: 'a'.repeat(51),
-      });
-      expect(error).toBeDefined();
-      expect(error.details[0].message).toContain('50');
-    });
-
-    it('should trim leading/trailing whitespace from the name', () => {
-      const { error, value } = validate(requestOtpSchema, {
-        ...validPayload,
-        name: '  John Doe  ',
-      });
+    it('should discard name because it is not part of signup input', () => {
+      const { error, value } = validate(requestOtpSchema, { ...validPayload, name: 'John Doe' });
       expect(error).toBeUndefined();
-      expect(value.name).toBe('John Doe');
+      expect(value).toEqual(validPayload);
     });
 
     it('should reject an invalid email format', () => {

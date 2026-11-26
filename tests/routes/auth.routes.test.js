@@ -54,7 +54,6 @@ describe('POST /api/v1/auth/signup/request-otp', () => {
     jest.spyOn(Otp, 'create').mockResolvedValue({});
 
     const response = await request(app).post('/api/v1/auth/signup/request-otp').send({
-      name: 'John Doe',
       email: 'john@example.com',
       password: 'Password123!',
     });
@@ -66,7 +65,6 @@ describe('POST /api/v1/auth/signup/request-otp', () => {
 
   it('should return 400 for invalid email', async () => {
     const response = await request(app).post('/api/v1/auth/signup/request-otp').send({
-      name: 'John Doe',
       email: 'not-an-email',
       password: 'Password123!',
     });

@@ -136,7 +136,7 @@ All business logic routes are versioned under `/api/v1`. Rate limits shown below
 
 **`POST /signup/request-otp`**
 
-- **Body:** `{ name, email, password }`
+- **Body:** `{ email, password }` (`name` can be set later)
 - **Description:** Creates an unverified user, generates an OTP, and pushes a job to BullMQ (async).
 - **Rate Limit:** 5 req/min.
 - **Errors:** `400` (validation), `409` (email already registered), `429` (rate limit), `500` (server / email).

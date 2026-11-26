@@ -83,13 +83,12 @@ describe('auth.controller', () => {
 
   describe('requestOtp', () => {
     it('should call the service and return 200 with the correct payload', async () => {
-      req.body = { name: 'John', email: 'john@example.com', password: 'Password123!' };
+      req.body = { email: 'john@example.com', password: 'Password123!' };
       requestSignupOtp.mockResolvedValue({});
 
       await requestOtp(req, res);
 
       expect(requestSignupOtp).toHaveBeenCalledWith({
-        name: 'John',
         email: 'john@example.com',
         password: 'Password123!',
       });

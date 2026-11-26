@@ -29,7 +29,7 @@ export const sendSignupOtpEmail = async (email, name, otp) => {
       htmlContent: `
         <html>
           <body>
-            <h2>Welcome to Authstack, ${escapeHtml(name)}!</h2>
+            <h2>${name ? `Welcome to Authstack, ${escapeHtml(name)}!` : 'Welcome to Authstack!'}</h2>
             <p>Your verification code is:</p>
             <h1 style="letter-spacing: 5px; color: #4F46E5;">${otp}</h1>
             <p>This code will expire in 10 minutes.</p>
@@ -38,7 +38,7 @@ export const sendSignupOtpEmail = async (email, name, otp) => {
         </html>
       `,
       sender,
-      to: [{ email, name }],
+      to: [name ? { email, name } : { email }],
     });
 
     logger.info(`OTP email sent to ${email}`);

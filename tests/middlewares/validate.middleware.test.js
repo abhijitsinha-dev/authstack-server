@@ -7,7 +7,6 @@ describe('validate middleware', () => {
   it('should attach valid data to req.body and call next()', () => {
     const req = {
       body: {
-        name: 'John',
         email: 'john@example.com',
         password: 'Password123!', // 👈 Added '!'
       },
@@ -24,7 +23,6 @@ describe('validate middleware', () => {
     // Send a complete payload with only the email invalid
     const req = {
       body: {
-        name: 'John',
         email: 'not-an-email', // 👈 the actual thing we're testing
         password: 'Password123!', // 👈 Added '!' so the password passes validation
       },

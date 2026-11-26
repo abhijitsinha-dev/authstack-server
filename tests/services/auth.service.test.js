@@ -123,7 +123,7 @@ describe('auth.service', () => {
   });
 
   describe('requestSignupOtp', () => {
-    const payload = { name: 'John', email: 'john@example.com', password: 'Password123!' };
+    const payload = { email: 'john@example.com', password: 'Password123!' };
 
     it('should throw 409 if user exists and is already verified', async () => {
       User.findOne.mockResolvedValue({ isVerified: true });
@@ -156,7 +156,6 @@ describe('auth.service', () => {
       );
       expect(emailQueue.add).toHaveBeenCalledWith('send-otp', {
         email: 'john@example.com',
-        name: 'John',
         otp: '123456',
       });
     });
