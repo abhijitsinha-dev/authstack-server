@@ -25,7 +25,7 @@ We use ADRs to document significant technical decisions, their context, and thei
 We use a domain-driven OpenAPI 3.0 YAML structure to document our API.
 
 - **[API Directory](./api/)** — The root folder for all OpenAPI YAML files.
-- **[Auth Routes](./api/auth/auth.paths.yaml)** — Authentication endpoints.
+- **[Auth API](./api/auth/)** — Authentication paths and responses grouped by feature, with shared schemas.
 - **[System Routes](./api/system/system.paths.yaml)** — Health and root probes.
 
 ### Development Standards

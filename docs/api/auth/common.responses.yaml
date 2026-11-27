@@ -1,0 +1,28 @@
+components:
+  responses:
+    RateLimitWithCooldown:
+      description: Rate limit exceeded (IP limit or 20-second email cooldown)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            cooldown_active:
+              summary: Email Cooldown Active
+              value:
+                { success: false, message: 'Please wait 15 seconds before requesting a new code.' }
+            ip_rate_limited:
+              summary: IP Rate Limited
+              value: { success: false, message: 'Too many requests. Please try again later.' }
+
+    OTPLockout:
+      description: Maximum verification attempts exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            {
+              success: false,
+              message: 'Maximum verification attempts exceeded. Please request a new OTP.',
+            }

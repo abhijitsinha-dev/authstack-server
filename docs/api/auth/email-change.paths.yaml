@@ -1,0 +1,210 @@
+paths:
+  /api/v1/auth/change-email/request-otp:
+    post:
+      summary: Request OTP to change email
+      description: |
+        Step 1 of the email change flow. Verifies the user's current password
+        and sends a 6-digit OTP to the **new** email address.
+
+        **Requires currentPassword** — not just a valid session. This is
+        proof of identity, not just proof of session. It closes the window
+        where a stolen access token (valid for 15 min) could be used to
+        redirect the account's recovery channel to an attacker-controlled
+        address.
+
+        **Synchronous delivery** via Brevo (unlike `forgot-password`) — the
+        user is actively waiting for this code on an address they may not
+        yet have confirmed. Silent failure would leave them stuck.
+
+        **Rate limited** to 3 req/15 min per IP + 20s cooldown per user.
+        Each request sends a real email (Brevo cost) and runs bcrypt (password
+        verification), so tighter limits than most endpoints.
+
+        **Note:** notification to the old email address is not yet
+        implemented (industry-standard follow-up).
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newEmail, currentPassword]
+              properties:
+                newEmail:
+                  type: string
+                  format: email
+                  description: The new email address to switch to.
+                  example: new-address@example.com
+                currentPassword:
+                  type: string
+                  format: password
+                  description: The user's current password, verified against the stored hash.
+                  example: OldPassword123!
+      responses:
+        '200':
+          description: OTP sent to the new email address.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RequestEmailChangeSuccessResponse'
+        '400':
+          description: Validation error or same-email guard
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_email:
+                  summary: Invalid newEmail format
+                  value: { success: false, message: 'Please provide a valid email address.' }
+                missing_password:
+                  summary: Missing currentPassword
+                  value: { success: false, message: 'Current password is required.' }
+                same_email:
+                  summary: newEmail equals current email
+                  value:
+                    { success: false, message: 'New email must be different from current email.' }
+        '401':
+          description: Unauthorized or wrong current password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                no_token:
+                  summary: Missing or malformed Authorization header
+                  value: { success: false, message: 'Not authorized, no token provided' }
+                wrong_current_password:
+                  summary: Current password is incorrect
+                  value: { success: false, message: 'Current password is incorrect.' }
+        '409':
+          description: Email already in use by another account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: This email is already in use.
+        '429':
+          $ref: '#/components/responses/RateLimitWithCooldown'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/auth/change-email/verify-otp:
+    post:
+      summary: Verify OTP and complete email change
+      description: |
+        Step 2 of the email change flow. Verifies the OTP sent to the new
+        email address and commits the change.
+
+        The OTP proves possession of the new address — that's the second
+        factor on top of the session + password checked in step 1.
+
+        **All OTHER sessions are revoked** on success (keeps the current one,
+        same as `POST /change-password`) so a compromised device that triggered
+        the change is logged out.
+
+        **Atomic OTP consumption:** the OTP is deleted with
+        `findOneAndDelete` _before_ the email is updated. A concurrent replay
+        cannot hijack the change.
+
+        **Post-verification collision check:** if another user registered
+        `newEmail` between request-otp and verify-otp, a `409` is returned.
+        The unique index on `User.email` is the final safety net — this
+        pre-check gives the user a clean error before the save attempt.
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newEmail, otp]
+              properties:
+                newEmail:
+                  type: string
+                  format: email
+                  description: The new email address (must match the one used in request-otp).
+                  example: new-address@example.com
+                otp:
+                  type: string
+                  description: 6-digit code sent to `newEmail`.
+                  example: '123456'
+      responses:
+        '200':
+          description: Email changed successfully. Other sessions (if any) were revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyEmailChangeSuccessResponse'
+        '400':
+          description: Validation error, invalid OTP, or same-email guard
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_email:
+                  summary: Invalid newEmail format
+                  value: { success: false, message: 'Please provide a valid email address.' }
+                invalid_otp_format:
+                  summary: OTP format not 6 digits
+                  value: { success: false, message: 'OTP must be exactly 6 digits.' }
+                same_email:
+                  summary: newEmail equals current email
+                  value:
+                    { success: false, message: 'New email must be different from current email.' }
+                expired_otp:
+                  summary: OTP expired or missing
+                  value:
+                    {
+                      success: false,
+                      message: 'OTP has expired or does not exist. Please request a new one.',
+                    }
+                invalid_otp:
+                  summary: Wrong OTP code
+                  value:
+                    { success: false, message: 'Invalid OTP code. You have 4 attempts remaining.' }
+                otp_used:
+                  summary: OTP already consumed (concurrent request)
+                  value:
+                    {
+                      success: false,
+                      message: 'OTP has already been used. Please request a new one.',
+                    }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Email claimed by another user during the OTP window
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: This email is already in use.
+        '429':
+          description: OTP lockout or rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                otp_lockout:
+                  summary: Maximum verification attempts exceeded
+                  value:
+                    {
+                      success: false,
+                      message: 'Maximum verification attempts exceeded. Please request a new OTP.',
+                    }
+                ip_rate_limited:
+                  summary: IP rate limited
+                  value: { success: false, message: 'Too many requests. Please try again later.' }
+        '500':
+          $ref: '#/components/responses/InternalServerError'

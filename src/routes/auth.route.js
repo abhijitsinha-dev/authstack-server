@@ -3,6 +3,8 @@ import {
   requestOtp,
   resendOtp,
   verifyOtp,
+  checkUsernameAvailability,
+  checkEmailAvailability,
   login,
   logout,
   refreshTokenController,
@@ -15,9 +17,7 @@ import {
   verifyEmailChangeController,
   forgotPassword,
   resetPasswordController,
-  checkUsernameAvailability,
-  checkEmailAvailability,
-} from '../controllers/auth.controller.js';
+} from '../controllers/index.js';
 import {
   requestOtpSchema,
   resendOtpSchema,

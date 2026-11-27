@@ -1,0 +1,257 @@
+components:
+  responses:
+    UsernameAvailabilitySuccess:
+      description: Username availability result
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UsernameAvailabilitySuccessResponse'
+          examples:
+            available:
+              summary: Username is available
+              value: { success: true, data: { available: true } }
+            unavailable:
+              summary: Username belongs to a verified account
+              value: { success: true, data: { available: false } }
+
+    UsernameAvailabilityBadRequest:
+      description: Missing, invalid, or reserved username
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            missing_username:
+              summary: Username was not provided
+              value: { success: false, message: 'Username is required.' }
+            invalid_username:
+              summary: Username does not match the allowed format
+              value:
+                {
+                  success: false,
+                  message: 'Username may only contain lowercase letters, numbers, and _, -, or .',
+                }
+            reserved_username:
+              summary: Username is reserved
+              value: { success: false, message: 'admin is not allowed' }
+
+    EmailAvailabilitySuccess:
+      description: Email availability result
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EmailAvailabilitySuccessResponse'
+          examples:
+            available:
+              summary: Email is available
+              value: { success: true, data: { available: true } }
+            unavailable:
+              summary: Email belongs to a verified account
+              value: { success: true, data: { available: false } }
+
+    EmailAvailabilityBadRequest:
+      description: Missing or invalid email address
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            missing_email:
+              summary: Email was not provided
+              value: { success: false, message: 'Email is required.' }
+            invalid_email:
+              summary: Email address is invalid
+              value: { success: false, message: 'Please provide a valid email address.' }
+
+    RequestOtpBadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            missing_username:
+              summary: Missing Username
+              value: { success: false, message: 'Username is required.' }
+            reserved_username:
+              summary: Reserved Username
+              value: { success: false, message: 'admin is not allowed' }
+            missing_email:
+              summary: Missing Email
+              value: { success: false, message: 'Email is required.' }
+            missing_password:
+              summary: Missing Password
+              value: { success: false, message: 'Password is required.' }
+            invalid_email:
+              summary: Invalid Email Format
+              value: { success: false, message: 'Please provide a valid email address.' }
+            weak_password:
+              summary: Weak Password
+              value:
+                {
+                  success: false,
+                  message: 'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one symbol.',
+                }
+
+    RequestOtpConflict:
+      description: The email or username already belongs to a verified account
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            email_already_exists:
+              summary: Email already belongs to a verified account
+              value:
+                {
+                  success: false,
+                  message: 'An account with this email already exists. Please log in.',
+                }
+            username_already_exists:
+              summary: Username is already taken
+              value:
+                {
+                  success: false,
+                  message: 'An account with this username already exists. Please choose another username.',
+                }
+            concurrent_signup:
+              summary: Email or username was claimed by a concurrent signup
+              value:
+                {
+                  success: false,
+                  message: 'That username or email just got taken. Please try again.',
+                }
+
+    ResendOtpBadRequest:
+      description: User is already verified or invalid input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            already_verified:
+              summary: Account Already Verified
+              value: { success: false, message: 'Account is already verified. Please log in.' }
+            invalid_email:
+              summary: Invalid Email Format
+              value: { success: false, message: 'Please provide a valid email address.' }
+
+    ResendOtpNotFound:
+      description: User not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example: { success: false, message: 'User not found. Please sign up first.' }
+
+    VerifyOtpSuccess:
+      description: |
+        Successfully verified. The response shape depends on the client:
+
+        - **Web clients** — `refreshToken` is set as an `HttpOnly` cookie
+          (see the `Set-Cookie` response header). The JSON body contains only
+          `accessToken`.
+        - **Mobile clients** — both `accessToken` and `refreshToken` are
+          returned in the JSON body. No `Set-Cookie` header.
+      headers:
+        Set-Cookie:
+          description: |
+            **Web clients only.** Contains the `refreshToken` cookie:
+            `refreshToken=<jwt>; HttpOnly; SameSite=Strict; Secure (in prod)`.
+
+            Mobile clients do not receive this header.
+          schema:
+            type: string
+            example: refreshToken=eyJhbGciOi...; Path=/; HttpOnly; SameSite=Strict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuthSuccessResponse'
+          examples:
+            web:
+              summary: Web client — refreshToken in Set-Cookie
+              value:
+                success: true
+                message: Account verified successfully
+                data:
+                  user:
+                    id: '60d5ecb8b392d7001f3f4e1a'
+                    username: 'john_doe'
+                    name: 'John Doe'
+                    email: 'john@example.com'
+                    role: 'user'
+                  accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+            web_without_name:
+              summary: Web client — optional name omitted
+              value:
+                success: true
+                message: Account verified successfully
+                data:
+                  user:
+                    id: '60d5ecb8b392d7001f3f4e1a'
+                    username: 'john_doe'
+                    email: 'john@example.com'
+                    role: 'user'
+                  accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+            mobile:
+              summary: Mobile client — refreshToken in response body
+              value:
+                success: true
+                message: Account verified successfully
+                data:
+                  user:
+                    id: '60d5ecb8b392d7001f3f4e1a'
+                    username: 'john_doe'
+                    name: 'John Doe'
+                    email: 'john@example.com'
+                    role: 'user'
+                  accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+                  refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+            mobile_without_name:
+              summary: Mobile client — optional name omitted
+              value:
+                success: true
+                message: Account verified successfully
+                data:
+                  user:
+                    id: '60d5ecb8b392d7001f3f4e1a'
+                    username: 'john_doe'
+                    email: 'john@example.com'
+                    role: 'user'
+                  accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+                  refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+
+    VerifyOtpBadRequest:
+      description: Invalid OTP or user already verified
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            invalid_otp:
+              summary: Invalid OTP Code
+              value: { success: false, message: 'Invalid OTP code. You have 4 attempts remaining.' }
+            expired_otp:
+              summary: Expired or Missing OTP
+              value:
+                {
+                  success: false,
+                  message: 'OTP has expired or does not exist. Please request a new one.',
+                }
+            already_verified:
+              summary: User Already Verified
+              value: { success: false, message: 'User is already verified. Please log in.' }
+            invalid_email:
+              summary: Invalid Email Format
+              value: { success: false, message: 'Please provide a valid email address.' }
+            invalid_otp_format:
+              summary: Invalid OTP Format
+              value: { success: false, message: 'OTP must be exactly 6 digits.' }
+
+    VerifyOtpNotFound:
+      description: User not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example: { success: false, message: 'User not found. Please sign up first.' }

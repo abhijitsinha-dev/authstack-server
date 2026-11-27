@@ -1,0 +1,199 @@
+components:
+  responses:
+    LoginSuccess:
+      description: |
+        Successfully logged in. The response shape depends on the client:
+
+        - **Web clients** — `refreshToken` is set as an `HttpOnly` cookie
+          (see the `Set-Cookie` response header). The JSON body contains only
+          `accessToken`.
+        - **Mobile clients** — both `accessToken` and `refreshToken` are
+          returned in the JSON body. No `Set-Cookie` header.
+      headers:
+        Set-Cookie:
+          description: |
+            **Web clients only.** Contains the `refreshToken` cookie:
+            `refreshToken=<jwt>; HttpOnly; SameSite=Strict; Secure (in prod)`.
+
+            Mobile clients do not receive this header.
+          schema:
+            type: string
+            example: refreshToken=eyJhbGciOi...; Path=/; HttpOnly; SameSite=Strict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AuthSuccessResponse'
+          examples:
+            web:
+              summary: Web client — refreshToken in Set-Cookie
+              value:
+                success: true
+                message: Logged in successfully
+                data:
+                  user:
+                    id: '60d5ecb8b392d7001f3f4e1a'
+                    username: 'john_doe'
+                    name: 'John Doe'
+                    email: 'john@example.com'
+                    role: 'user'
+                  accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+            web_without_name:
+              summary: Web client — optional name omitted
+              value:
+                success: true
+                message: Logged in successfully
+                data:
+                  user:
+                    id: '60d5ecb8b392d7001f3f4e1a'
+                    username: 'john_doe'
+                    email: 'john@example.com'
+                    role: 'user'
+                  accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+            mobile:
+              summary: Mobile client — refreshToken in response body
+              value:
+                success: true
+                message: Logged in successfully
+                data:
+                  user:
+                    id: '60d5ecb8b392d7001f3f4e1a'
+                    username: 'john_doe'
+                    name: 'John Doe'
+                    email: 'john@example.com'
+                    role: 'user'
+                  accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+                  refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+            mobile_without_name:
+              summary: Mobile client — optional name omitted
+              value:
+                success: true
+                message: Logged in successfully
+                data:
+                  user:
+                    id: '60d5ecb8b392d7001f3f4e1a'
+                    username: 'john_doe'
+                    email: 'john@example.com'
+                    role: 'user'
+                  accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+                  refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+
+    LoginBadRequest:
+      description: Validation error (e.g., missing fields, invalid email)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            missing_email:
+              summary: Missing Email
+              value: { success: false, message: 'Email is required.' }
+            missing_password:
+              summary: Missing Password
+              value: { success: false, message: 'Password is required.' }
+            invalid_email:
+              summary: Invalid Email Format
+              value: { success: false, message: 'Invalid email or password.' }
+
+    LoginUnauthorized:
+      description: Invalid email or password
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example: { success: false, message: 'Invalid email or password.' }
+
+    RefreshSuccess:
+      description: |
+        Refresh token successfully rotated. The response shape depends on the
+        client:
+
+        - **Web clients** — the rotated `refreshToken` is set as an `HttpOnly`
+          cookie (see `Set-Cookie` header). The JSON body contains only
+          `accessToken`.
+        - **Mobile clients** — both `accessToken` and the rotated `refreshToken`
+          are returned in the JSON body. No `Set-Cookie` header.
+
+        **Clients MUST persist the new refresh token** — the old one is now
+        invalid. Presenting the old token again will trigger reuse detection
+        and revoke the entire session.
+      headers:
+        Set-Cookie:
+          description: |
+            **Web clients only.** Contains the rotated `refreshToken` cookie:
+            `refreshToken=<jwt>; HttpOnly; SameSite=Strict; Secure (in prod)`.
+          schema:
+            type: string
+            example: refreshToken=eyJhbGciOi...; Path=/; HttpOnly; SameSite=Strict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RefreshSuccessResponse'
+          examples:
+            web:
+              summary: Web client — rotated refreshToken in Set-Cookie
+              value:
+                success: true
+                data:
+                  accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+            mobile:
+              summary: Mobile client — both tokens in response body
+              value:
+                success: true
+                data:
+                  accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+                  refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+
+    MeSuccess:
+      description: |
+        Current authenticated user's profile. Response shape matches the
+        `user` field returned by `/login` and `/signup/verify-otp`, so
+        clients can share the same parser.
+
+        `name` is optional and is omitted when the user has not set a display name.
+        The response is marked `Cache-Control: no-store` — user data must
+        never be cached by proxies or shared caches.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MeSuccessResponse'
+          examples:
+            with_name:
+              summary: User has set a display name
+              value:
+                success: true
+                data:
+                  user:
+                    id: '60d5ecb8b392d7001f3f4e1a'
+                    username: 'john_doe'
+                    name: 'John Doe'
+                    email: 'john@example.com'
+                    role: 'user'
+            without_name:
+              summary: User has not set a display name
+              value:
+                success: true
+                data:
+                  user:
+                    id: '60d5ecb8b392d7001f3f4e1a'
+                    username: 'john_doe'
+                    email: 'john@example.com'
+                    role: 'user'
+
+    LogoutNotFound:
+      description: |
+        Session not found — a rare race condition where the session was deleted
+        between the `protect` middleware's existence check and `logoutUser()`
+        revoking it.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example: { success: false, message: 'Session not found or already logged out.' }
+
+    EmailNotVerified:
+      description: Email not verified
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example: { success: false, message: 'Please verify your email before logging in.' }
