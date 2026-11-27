@@ -1,0 +1,91 @@
+paths:
+  /api/v1/auth/change-username:
+    post:
+      summary: Change the authenticated user's username
+      description: |
+        Changes the username for the currently authenticated user. A valid
+        access token and active session are required; no password or OTP is
+        required. The supplied username is trimmed and lowercased before
+        validation. Usernames must be 3-30 characters, use lowercase letters,
+        numbers, `_`, `-`, or `.`, and cannot be reserved.
+
+        The username must not already belong to another account. The unique
+        database index remains the final safeguard against concurrent changes.
+        Other sessions remain active.
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newUsername]
+              properties:
+                newUsername:
+                  type: string
+                  minLength: 3
+                  maxLength: 30
+                  pattern: '^[a-z0-9_.-]+$'
+                  description: |
+                    New username. Leading/trailing whitespace is trimmed and
+                    letters are lowercased. Reserved usernames are rejected.
+                  example: new_username
+      responses:
+        '200':
+          description: Username changed successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Username changed successfully.
+                  data:
+                    type: object
+                    properties:
+                      username:
+                        type: string
+                        example: new_username
+        '400':
+          description: Invalid username or requested username is unchanged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalid_username:
+                  summary: Username fails validation
+                  value:
+                    success: false
+                    message: Username may only contain lowercase letters, numbers, and _, -, or .
+                reserved_username:
+                  summary: Username is reserved
+                  value:
+                    success: false
+                    message: admin is not allowed
+                unchanged_username:
+                  summary: New username equals current username
+                  value:
+                    success: false
+                    message: New username must be different from current username.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Username is already in use
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: This username is already in use.
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'

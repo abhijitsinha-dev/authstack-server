@@ -48,6 +48,25 @@ export const emailAvailabilitySchema = Joi.object({
   email: emailField,
 });
 
+export const changeUsernameSchema = Joi.object({
+  newUsername: Joi.string()
+    .min(3)
+    .max(30)
+    .lowercase()
+    .trim()
+    .pattern(/^[a-z0-9_.-]+$/)
+    .invalid(...RESERVED_USERNAMES)
+    .required()
+    .messages({
+      'any.required': 'Username is required.',
+      'string.empty': 'Username is required.',
+      'string.min': 'Username must be at least 3 characters long.',
+      'string.max': 'Username must be at most 30 characters long.',
+      'string.pattern.base': 'Username may only contain lowercase letters, numbers, and _, -, or .',
+      'any.invalid': '{{#value}} is not allowed',
+    }),
+});
+
 export const resendOtpSchema = Joi.object({
   email: emailField,
 });

@@ -3,6 +3,7 @@ import {
   resendOtpSchema,
   verifyOtpSchema,
   loginSchema,
+  changeUsernameSchema,
   changePasswordSchema, // 👈 NEW
   requestEmailChangeSchema, // 👈 NEW
   verifyEmailChangeSchema, // 👈 NEW
@@ -19,6 +20,28 @@ const validate = (schema, payload) =>
   });
 
 describe('auth.validator', () => {
+  describe('changeUsernameSchema', () => {
+    it('should normalize and accept a valid username', () => {
+      const { error, value } = validate(changeUsernameSchema, { newUsername: '  NEW_Name  ' });
+
+      expect(error).toBeUndefined();
+      expect(value).toEqual({ newUsername: 'new_name' });
+    });
+
+    it('should reject a missing username', () => {
+      const { error } = validate(changeUsernameSchema, {});
+
+      expect(error).toBeDefined();
+      expect(error.details[0].message).toBe('Username is required.');
+    });
+
+    it.each(['ab', 'john doe', 'admin'])('should reject invalid username "%s"', (newUsername) => {
+      const { error } = validate(changeUsernameSchema, { newUsername });
+
+      expect(error).toBeDefined();
+    });
+  });
+
   describe('requestOtpSchema', () => {
     const validPayload = {
       username: 'john_doe.1-a',

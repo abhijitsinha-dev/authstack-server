@@ -13,6 +13,7 @@ import {
   revokeSessionController,
   revokeOtherSessionsController,
   changePasswordController,
+  changeUsernameController,
   requestEmailChangeController,
   verifyEmailChangeController,
   forgotPassword,
@@ -24,6 +25,7 @@ import {
   verifyOtpSchema,
   loginSchema,
   changePasswordSchema,
+  changeUsernameSchema,
   requestEmailChangeSchema,
   verifyEmailChangeSchema,
   forgotPasswordSchema,
@@ -156,6 +158,20 @@ router
     protect,
     logout
   );
+
+// ─────────────────────────────────────────────
+// Username change
+// ─────────────────────────────────────────────
+router.route('/change-username').post(
+  rateLimit({
+    limit: isProduction ? 5 : DEV_LIMIT,
+    window: '15 m',
+    prefix: 'ratelimit:change-username',
+  }),
+  protect,
+  validateBody(changeUsernameSchema),
+  changeUsernameController
+);
 
 // ─────────────────────────────────────────────
 // Email change

@@ -134,6 +134,72 @@ describe('GET /api/v1/auth/email-availability', () => {
   });
 });
 
+describe('POST /api/v1/auth/change-username', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('changes the authenticated user username and returns the normalized value', async () => {
+    const mockUser = { username: 'old_name', save: jest.fn().mockResolvedValue({}) };
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
+    jest.spyOn(User, 'findById').mockResolvedValue(mockUser);
+    jest.spyOn(User, 'findOne').mockResolvedValue(null);
+
+    const response = await request(app)
+      .post('/api/v1/auth/change-username')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ newUsername: '  NEW_Name  ' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      success: true,
+      message: 'Username changed successfully.',
+      data: { username: 'new_name' },
+    });
+    expect(mockUser.username).toBe('new_name');
+    expect(mockUser.save).toHaveBeenCalled();
+  });
+
+  it('returns 400 for a reserved username', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
+
+    const response = await request(app)
+      .post('/api/v1/auth/change-username')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ newUsername: 'admin' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('admin is not allowed');
+    expect(User.findById).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when another account owns the requested username', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
+    jest.spyOn(User, 'findById').mockResolvedValue({
+      username: 'old_name',
+      save: jest.fn(),
+    });
+    jest.spyOn(User, 'findOne').mockResolvedValue({ _id: 'other-user' });
+
+    const response = await request(app)
+      .post('/api/v1/auth/change-username')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ newUsername: 'taken_name' });
+
+    expect(response.status).toBe(409);
+    expect(response.body.message).toBe('This username is already in use.');
+  });
+
+  it('requires an authenticated session', async () => {
+    const response = await request(app)
+      .post('/api/v1/auth/change-username')
+      .send({ newUsername: 'new_name' });
+
+    expect(response.status).toBe(401);
+  });
+});
+
 describe('POST /api/v1/auth/signup/request-otp', () => {
   beforeEach(() => jest.clearAllMocks());
 

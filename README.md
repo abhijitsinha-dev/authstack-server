@@ -2,7 +2,7 @@
 
 Backend API for the authstack project — an Express + MongoDB service built for serverless deployment on Vercel, with a dedicated BullMQ worker for background processing.
 
-> **Status:** Authentication flow (signup, login, refresh, logout, current user, session management, change password, change email) and password reset are fully implemented and tested. Core auth, secure JWT session management, and modular API documentation are production-ready.
+> **Status:** Authentication flow (signup, login, refresh, logout, current user, session management, username change, change password, change email) and password reset are fully implemented and tested. Core auth, secure JWT session management, and modular API documentation are production-ready.
 
 ---
 
@@ -12,6 +12,7 @@ Backend API for the authstack project — an Express + MongoDB service built for
 - **Refresh Token Rotation:** Single-use refresh tokens with automatic reuse detection. A replayed (already-rotated) token revokes the entire session — detects token theft.
 - **Current User:** `GET /me` for cold-start hydration, so clients can restore session state without a full login round-trip.
 - **Session Management:** List all active sessions across devices, revoke a specific session, or log out of all other devices. Detects which session is making the current request so the UI can highlight "This device".
+- **Change Username:** Authenticated users can change their username after validation and an availability check; other sessions remain active.
 - **Change Password:** Users update their password by providing their current password. All other sessions are revoked on success, keeping the current device logged in.
 - **Change Email:** Users change their account email via a password-verified OTP flow. The OTP goes to the new address (proof of possession) and all other sessions are revoked on success.
 - **Password Reset:** Forgot-password + reset-password with 6-digit OTP via email. All active sessions are revoked on successful reset.
@@ -218,6 +219,16 @@ All business logic routes are versioned under `/api/v1`. Rate limits shown below
 - **Description:** Revokes the current session in the database and clears the refresh-token cookie.
 - **Rate Limit:** 20 req/min.
 - **Errors:** `401` (unauthorized), `404` (session already gone), `500`.
+
+#### Username Change
+
+**`POST /change-username`**
+
+- **Requires:** Bearer Token
+- **Body:** `{ newUsername }`
+- **Description:** Changes the authenticated user's username. No password or OTP is required. The username is trimmed and lowercased, must be 3-30 characters, may contain lowercase letters, numbers, `_`, `-`, or `.`, and cannot be reserved. Other sessions remain active.
+- **Rate Limit:** 5 req/15 min.
+- **Errors:** `400` (invalid, reserved, or unchanged username), `401` (unauthorized or invalid session), `409` (username already in use), `429` (rate limit), `500`.
 
 #### Email Change
 
