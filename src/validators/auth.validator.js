@@ -3,6 +3,7 @@ import {
   emailField,
   strongPasswordField,
   loginEmailField,
+  loginUsernameField,
   loginPasswordField,
   RESERVED_USERNAMES,
 } from './fields.js';
@@ -62,7 +63,12 @@ export const verifyOtpSchema = Joi.object({
 });
 
 export const loginSchema = Joi.object({
-  email: loginEmailField,
+  identifier: Joi.alternatives().try(loginEmailField, loginUsernameField).required().messages({
+    'any.required': 'Email or username is required.',
+    'alternatives.any': 'Invalid email or password.',
+    'alternatives.match': 'Invalid email or password.',
+    'alternatives.types': 'Invalid email or password.',
+  }),
   password: loginPasswordField,
 });
 

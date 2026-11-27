@@ -313,7 +313,7 @@ describe('POST /api/v1/auth/login', () => {
     jest.spyOn(Session, 'create').mockResolvedValue({});
 
     const response = await request(app).post('/api/v1/auth/login').send({
-      email: 'john@example.com',
+      identifier: 'john@example.com',
       password: 'Password123!',
     });
 
@@ -322,11 +322,28 @@ describe('POST /api/v1/auth/login', () => {
     expect(response.headers['set-cookie']).toBeDefined();
   });
 
+  it('should allow login with a username identifier', async () => {
+    jest.spyOn(User, 'findOne').mockReturnValue({
+      select: jest.fn().mockResolvedValue({ _id: 'u1', isVerified: true, password: 'hashed' }),
+    });
+    jest.spyOn(bcrypt, 'compare').mockResolvedValue(true);
+    jest.spyOn(Session, 'create').mockResolvedValue({});
+
+    const response = await request(app).post('/api/v1/auth/login').send({
+      identifier: 'JOHN_DOE',
+      password: 'Password123!',
+    });
+
+    expect(response.status).toBe(200);
+    expect(User.findOne).toHaveBeenCalledWith({ username: 'john_doe' });
+    expect(response.body.data.accessToken).toBeDefined();
+  });
+
   it('should return 401 for invalid credentials', async () => {
     jest.spyOn(User, 'findOne').mockReturnValue({ select: jest.fn().mockResolvedValue(null) });
 
     const response = await request(app).post('/api/v1/auth/login').send({
-      email: 'john@example.com',
+      identifier: 'john@example.com',
       password: 'WrongPassword!',
     });
 

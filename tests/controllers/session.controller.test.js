@@ -79,7 +79,7 @@ describe('session.controller', () => {
     const mockTokens = { accessToken: 'fake-access', refreshToken: 'fake-refresh' };
 
     beforeEach(() => {
-      req.body = { email: 'test@example.com', password: 'Password123!' };
+      req.body = { identifier: 'test@example.com', password: 'Password123!' };
       loginUser.mockResolvedValue({ user: mockUser, ...mockTokens });
     });
 
@@ -89,7 +89,7 @@ describe('session.controller', () => {
       await login(req, res);
 
       expect(loginUser).toHaveBeenCalledWith({
-        email: 'test@example.com',
+        identifier: 'test@example.com',
         password: 'Password123!',
         ip: '127.0.0.1',
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
@@ -113,6 +113,19 @@ describe('session.controller', () => {
           },
           accessToken: 'fake-access',
         },
+      });
+    });
+
+    it('should pass a username to the service when provided', async () => {
+      req.body = { identifier: 'john_doe', password: 'Password123!' };
+
+      await login(req, res);
+
+      expect(loginUser).toHaveBeenCalledWith({
+        identifier: 'john_doe',
+        password: 'Password123!',
+        ip: '127.0.0.1',
+        userAgent: undefined,
       });
     });
 

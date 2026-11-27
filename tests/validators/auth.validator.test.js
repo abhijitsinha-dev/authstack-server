@@ -264,7 +264,7 @@ describe('auth.validator', () => {
   });
 
   describe('loginSchema', () => {
-    const validPayload = { email: 'john@example.com', password: 'Password123!' };
+    const validPayload = { identifier: 'john@example.com', password: 'Password123!' };
 
     it('should accept a valid payload', () => {
       const { error } = validate(loginSchema, validPayload);
@@ -277,23 +277,37 @@ describe('auth.validator', () => {
     // from "wrong password" (401) — breaking anti-enumeration.
     it('should NOT enforce strong password rules (weak passwords must reach the service)', () => {
       const { error, value } = validate(loginSchema, {
-        email: 'john@example.com',
+        identifier: 'john@example.com',
         password: 'weak',
       });
       expect(error).toBeUndefined();
       expect(value.password).toBe('weak');
     });
 
-    it('should reject a missing email', () => {
-      const { error } = validate(loginSchema, { ...validPayload, email: undefined });
-      expect(error).toBeDefined();
-      expect(error.details[0].path).toContain('email');
+    it('should accept a username and normalize its case and whitespace', () => {
+      const { error, value } = validate(loginSchema, {
+        identifier: '  JOHN_DOE  ',
+        password: 'weak',
+      });
+
+      expect(error).toBeUndefined();
+      expect(value).toEqual({ identifier: 'john_doe', password: 'weak' });
     });
 
-    it('should return the generic "Invalid email or password." message for bad emails', () => {
-      const { error } = validate(loginSchema, { ...validPayload, email: 'not-an-email' });
+    it('should reject a missing identifier', () => {
+      const { error } = validate(loginSchema, { password: validPayload.password });
+
       expect(error).toBeDefined();
-      expect(error.details[0].path).toContain('email');
+      expect(error.details[0].message).toBe('Email or username is required.');
+    });
+
+    it('should return the generic "Invalid email or password." message for an invalid identifier', () => {
+      const { error } = validate(loginSchema, {
+        ...validPayload,
+        identifier: 'not an identifier',
+      });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('identifier');
       expect(error.details[0].message).toBe('Invalid email or password.');
     });
 

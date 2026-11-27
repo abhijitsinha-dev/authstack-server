@@ -47,19 +47,26 @@ export const strongPasswordField = Joi.string()
     'string.max': 'Password must be at most 72 characters long.',
   });
 
-export const loginEmailField = Joi.string()
-  .min(5)
-  .max(254)
-  .email()
+export const loginEmailField = Joi.string().min(5).max(254).email().lowercase().trim().messages({
+  'string.base': 'Invalid email or password.',
+  'string.empty': 'Invalid email or password.',
+  'string.min': 'Invalid email or password.',
+  'string.max': 'Invalid email or password.',
+  'string.email': 'Invalid email or password.',
+});
+
+export const loginUsernameField = Joi.string()
+  .min(3)
+  .max(30)
+  .pattern(/^[a-z0-9_.-]+$/)
   .lowercase()
   .trim()
-  .required()
   .messages({
-    'any.required': 'Email is required.',
-    'string.empty': 'Email is required.',
+    'string.base': 'Invalid email or password.',
+    'string.empty': 'Invalid email or password.',
     'string.min': 'Invalid email or password.',
     'string.max': 'Invalid email or password.',
-    'string.email': 'Invalid email or password.',
+    'string.pattern.base': 'Invalid email or password.',
   });
 
 export const loginPasswordField = Joi.string().max(72).required().messages({

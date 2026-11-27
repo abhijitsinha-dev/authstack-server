@@ -10,9 +10,9 @@ import {
 import { sendAuthResponse } from '../utils/authResponse.js';
 
 export const login = async (req, res) => {
-  const { email, password } = req.body;
+  const { identifier, password } = req.body;
   const { user, accessToken, refreshToken } = await loginUser({
-    email,
+    identifier,
     password,
     ip: req.ip,
     userAgent: req.headers['user-agent'],

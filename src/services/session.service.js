@@ -8,12 +8,15 @@ import { ApiError } from '../utils/ApiError.js';
 import { logger } from '../config/logger.js';
 import { isStrongPassword } from '../utils/validator.js';
 
-export const loginUser = async ({ email, password, ip, userAgent }) => {
+export const loginUser = async ({ identifier, password, ip, userAgent }) => {
   if (!isStrongPassword(password)) {
     throw new ApiError(401, 'Invalid email or password.');
   }
 
-  const user = await User.findOne({ email }).select('+password');
+  const identifierQuery = identifier.includes('@')
+    ? { email: identifier }
+    : { username: identifier };
+  const user = await User.findOne(identifierQuery).select('+password');
 
   if (!user) throw new ApiError(401, 'Invalid email or password.');
   if (!user.isVerified) throw new ApiError(403, 'Please verify your email before logging in.');

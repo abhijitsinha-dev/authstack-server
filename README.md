@@ -134,6 +134,18 @@ All business logic routes are versioned under `/api/v1`. Rate limits shown below
 
 #### Signup
 
+**`GET /username-availability?username=john_doe`**
+
+- **Description:** Returns a boolean in `data.available`. Only verified accounts reserve a username; pending signup records do not. Responses use `Cache-Control: no-store`.
+- **Rate Limit:** 10 req/min.
+- **Errors:** `400` (missing, invalid, or reserved username), `429` (rate limit), `500`.
+
+**`GET /email-availability?email=john@example.com`**
+
+- **Description:** Returns a boolean in `data.available`. Email input is trimmed and lowercased before checking; only verified accounts reserve the address. Responses use `Cache-Control: no-store`.
+- **Rate Limit:** 10 req/min.
+- **Errors:** `400` (missing or invalid email), `429` (rate limit), `500`.
+
 **`POST /signup/request-otp`**
 
 - **Body:** `{ username, email, password }`. Username must be 3-30 lowercase letters, numbers, `_`, `-`, or `.`; `admin`, `support`, `root`, `api`, `help`, `security`, `noreply`, and `postmaster` are reserved. Email must be 5-254 characters; password must be 8-72 characters.
@@ -159,8 +171,8 @@ All business logic routes are versioned under `/api/v1`. Rate limits shown below
 
 **`POST /login`**
 
-- **Body:** `{ email, password }`
-- **Description:** Authenticates the user. Returns an Access Token and sets a Refresh Token (HttpOnly cookie for web, JSON for mobile).
+- **Body:** `{ identifier, password }`. `identifier` accepts either an email address or username.
+- **Description:** Trims and lowercases the identifier, then authenticates by email or username. Returns an Access Token and sets a Refresh Token (HttpOnly cookie for web, JSON for mobile).
 - **Rate Limit:** 5 req/min.
 - **Errors:** `400` (validation), `401` (invalid credentials), `403` (email not verified), `429` (rate limit), `500`.
 

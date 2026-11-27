@@ -2,7 +2,9 @@ paths:
   /api/v1/auth/login:
     post:
       summary: Log in to an existing account
-      description: Authenticates the user. Returns an Access Token and sets a Refresh Token.
+      description: |
+        Authenticates the user using an `identifier` containing either an
+        email or username. Returns an Access Token and sets a Refresh Token.
       tags: [Auth]
       requestBody:
         required: true
@@ -10,10 +12,30 @@ paths:
           application/json:
             schema:
               type: object
-              required: [email, password]
+              required: [identifier, password]
               properties:
-                email: { type: string, format: email, example: john@example.com }
+                identifier:
+                  description: |
+                    Email address or username. The value is trimmed and
+                    lowercased before lookup.
+                  oneOf:
+                    - type: string
+                      format: email
+                      minLength: 5
+                      maxLength: 254
+                    - type: string
+                      minLength: 3
+                      maxLength: 30
+                      pattern: '^[a-z0-9_.-]+$'
+                  example: john@example.com
                 password: { type: string, example: Password123! }
+            examples:
+              email:
+                summary: Log in with an email address
+                value: { identifier: john@example.com, password: Password123! }
+              username:
+                summary: Log in with a username
+                value: { identifier: john_doe, password: Password123! }
       responses:
         '200':
           $ref: '#/components/responses/LoginSuccess'

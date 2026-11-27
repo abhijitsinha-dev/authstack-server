@@ -79,7 +79,7 @@ describe('session.service', () => {
 
   describe('loginUser', () => {
     const payload = {
-      email: 'john@example.com',
+      identifier: 'john@example.com',
       password: 'Password123!',
       ip: '127.0.0.1',
       userAgent: 'test',
@@ -103,6 +103,17 @@ describe('session.service', () => {
     it('should throw 401 if user does not exist', async () => {
       User.findOne.mockReturnValue({ select: jest.fn().mockResolvedValue(null) });
       await expect(loginUser(payload)).rejects.toThrow('Invalid email or password.');
+      expect(User.findOne).toHaveBeenCalledWith({ email: payload.identifier });
+    });
+
+    it('should look up users by username when the identifier is not an email', async () => {
+      User.findOne.mockReturnValue({ select: jest.fn().mockResolvedValue(null) });
+
+      await expect(
+        loginUser({ identifier: 'john_doe', password: payload.password })
+      ).rejects.toThrow('Invalid email or password.');
+
+      expect(User.findOne).toHaveBeenCalledWith({ username: 'john_doe' });
     });
 
     it('should throw 403 if user is not verified', async () => {

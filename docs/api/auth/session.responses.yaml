@@ -78,20 +78,20 @@ components:
                   refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
 
     LoginBadRequest:
-      description: Validation error (e.g., missing fields, invalid email)
+      description: Validation error (e.g., missing identifier, invalid identifier)
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           examples:
-            missing_email:
-              summary: Missing Email
-              value: { success: false, message: 'Email is required.' }
+            missing_identifier:
+              summary: Missing Identifier
+              value: { success: false, message: 'Email or username is required.' }
             missing_password:
               summary: Missing Password
               value: { success: false, message: 'Password is required.' }
-            invalid_email:
-              summary: Invalid Email Format
+            invalid_identifier:
+              summary: Invalid Identifier Format
               value: { success: false, message: 'Invalid email or password.' }
 
     LoginUnauthorized:
