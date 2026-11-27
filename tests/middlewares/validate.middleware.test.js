@@ -7,7 +7,7 @@ describe('validate middleware', () => {
   it('should attach valid data to req.body and call next()', () => {
     const req = {
       body: {
-        name: 'John',
+        username: 'john',
         email: 'john@example.com',
         password: 'Password123!', // 👈 Added '!'
       },
@@ -17,6 +17,7 @@ describe('validate middleware', () => {
     validate(requestOtpSchema)(req, {}, next);
 
     expect(next).toHaveBeenCalledWith(); // No error passed
+    expect(req.body.username).toBe('john');
     expect(req.body.email).toBe('john@example.com');
   });
 
@@ -24,7 +25,7 @@ describe('validate middleware', () => {
     // Send a complete payload with only the email invalid
     const req = {
       body: {
-        name: 'John',
+        username: 'john',
         email: 'not-an-email', // 👈 the actual thing we're testing
         password: 'Password123!', // 👈 Added '!' so the password passes validation
       },

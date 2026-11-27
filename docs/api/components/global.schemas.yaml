@@ -16,8 +16,13 @@ components:
         id:
           type: string
           example: '60d5ecb8b392d7001f3f4e1a'
+        username:
+          type: string
+          example: john_doe.1-a
         name:
           type: string
+          description: >-
+            Optional display name. May be an empty string; omitted from responses when unset.
           example: John Doe
         email:
           type: string

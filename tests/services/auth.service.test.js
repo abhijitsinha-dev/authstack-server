@@ -5,13 +5,20 @@ import { jest } from '@jest/globals';
 // ─────────────────────────────────────────────
 
 jest.unstable_mockModule('../../src/models/user.model.js', () => ({
-  default: { findOne: jest.fn(), findById: jest.fn(), create: jest.fn(), deleteOne: jest.fn() },
+  default: {
+    findOne: jest.fn(),
+    findById: jest.fn(),
+    create: jest.fn(),
+    deleteOne: jest.fn(),
+    deleteMany: jest.fn(),
+  },
 }));
 
 jest.unstable_mockModule('../../src/models/otp.model.js', () => ({
   default: {
     findOne: jest.fn(),
     findOneAndDelete: jest.fn(),
+    findOneAndUpdate: jest.fn(),
     deleteMany: jest.fn(),
     deleteOne: jest.fn(),
     create: jest.fn(),
@@ -123,42 +130,104 @@ describe('auth.service', () => {
   });
 
   describe('requestSignupOtp', () => {
-    const payload = { name: 'John', email: 'john@example.com', password: 'Password123!' };
+    const payload = {
+      username: 'john',
+      email: 'john@example.com',
+      password: 'Password123!',
+    };
 
     it('should throw 409 if user exists and is already verified', async () => {
-      User.findOne.mockResolvedValue({ isVerified: true });
+      User.findOne
+        .mockResolvedValueOnce({
+          email: payload.email,
+          username: payload.username,
+          isVerified: true,
+        })
+        .mockResolvedValueOnce({
+          email: payload.email,
+          username: payload.username,
+          isVerified: true,
+        });
 
       await expect(requestSignupOtp(payload)).rejects.toThrow(
         'An account with this email already exists. Please log in.'
       );
+      expect(User.findOne).toHaveBeenNthCalledWith(1, { email: payload.email });
+      expect(User.findOne).toHaveBeenNthCalledWith(2, { username: payload.username });
       expect(User.create).not.toHaveBeenCalled();
     });
 
-    it('should delete old user, create new user, save OTP, and push to queue', async () => {
-      User.findOne.mockResolvedValue({ _id: 'old-id', isVerified: false });
-      User.deleteOne.mockResolvedValue({});
-      User.create.mockResolvedValue({ _id: 'new-id' });
-      Otp.deleteMany.mockResolvedValue({});
-      Otp.create.mockResolvedValue({});
-      emailQueue.add.mockResolvedValue({});
+    it.each([
+      ['same username', payload.username],
+      ['different username', 'old-name'],
+      ['no username', undefined],
+    ])(
+      'should replace an unverified same-email account with %s',
+      async (_usernameCase, existingUsername) => {
+        User.findOne
+          .mockResolvedValueOnce({
+            _id: 'old-id',
+            email: payload.email,
+            username: existingUsername,
+            isVerified: false,
+          })
+          .mockResolvedValueOnce(
+            existingUsername === payload.username
+              ? {
+                  _id: 'old-id',
+                  email: payload.email,
+                  username: existingUsername,
+                  isVerified: false,
+                }
+              : null
+          );
+        User.deleteMany.mockResolvedValue({});
+        User.create.mockResolvedValue({ _id: 'new-id' });
+        Otp.findOneAndUpdate.mockResolvedValue({});
+        emailQueue.add.mockResolvedValue({});
 
-      await requestSignupOtp(payload);
+        await requestSignupOtp(payload);
 
-      expect(User.deleteOne).toHaveBeenCalledWith({ _id: 'old-id' });
-      expect(User.create).toHaveBeenCalledWith(payload);
-      expect(Otp.deleteMany).toHaveBeenCalledWith({ email: 'john@example.com', purpose: 'signup' });
-      expect(Otp.create).toHaveBeenCalledWith(
-        expect.objectContaining({
+        expect(User.deleteMany).toHaveBeenCalledWith({
+          _id: { $in: ['old-id', ...(existingUsername === payload.username ? ['old-id'] : [])] },
+          isVerified: false,
+        });
+        expect(User.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            ...payload,
+            expiresAt: expect.any(Date),
+          })
+        );
+        expect(Otp.findOneAndUpdate).toHaveBeenCalledWith(
+          { email: payload.email, purpose: 'signup' },
+          {
+            $set: {
+              codeHash: 'hashed-otp',
+              expiresAt: expect.any(Date),
+            },
+          },
+          { upsert: true }
+        );
+        expect(emailQueue.add).toHaveBeenCalledWith('send-otp', {
           email: 'john@example.com',
-          codeHash: 'hashed-otp',
-          purpose: 'signup',
-        })
-      );
-      expect(emailQueue.add).toHaveBeenCalledWith('send-otp', {
-        email: 'john@example.com',
-        name: 'John',
-        otp: '123456',
+          username: 'john',
+          otp: '123456',
+        });
+      }
+    );
+
+    it('should reject a username already used by another account', async () => {
+      User.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce({
+        email: 'other@example.com',
+        username: payload.username,
+        isVerified: false,
       });
+
+      await expect(requestSignupOtp(payload)).rejects.toThrow(
+        'An account with this username already exists. Please choose another username.'
+      );
+      expect(User.deleteMany).not.toHaveBeenCalled();
+      expect(User.create).not.toHaveBeenCalled();
     });
   });
 
@@ -184,7 +253,7 @@ describe('auth.service', () => {
     });
 
     it('should generate new OTP and send email synchronously if cooldown passed', async () => {
-      User.findOne.mockResolvedValue({ name: 'John', isVerified: false });
+      User.findOne.mockResolvedValue({ username: 'john', isVerified: false });
       Otp.findOne.mockResolvedValue({ createdAt: new Date(Date.now() - 25000) });
       Otp.deleteMany.mockResolvedValue({});
       Otp.create.mockResolvedValue({});
@@ -193,7 +262,7 @@ describe('auth.service', () => {
       await resendSignupOtp({ email });
 
       expect(Otp.create).toHaveBeenCalledWith(expect.objectContaining({ purpose: 'signup' }));
-      expect(sendSignupOtpEmail).toHaveBeenCalledWith('john@example.com', 'John', '123456');
+      expect(sendSignupOtpEmail).toHaveBeenCalledWith('john@example.com', 'john', '123456');
     });
   });
 

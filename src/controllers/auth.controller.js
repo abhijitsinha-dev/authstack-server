@@ -18,8 +18,8 @@ import {
 import { sendAuthResponse } from '../utils/authResponse.js';
 
 export const requestOtp = async (req, res) => {
-  const { name, email, password } = req.body;
-  await requestSignupOtp({ name, email, password });
+  const { username, email, password } = req.body;
+  await requestSignupOtp({ username, email, password });
   res.status(200).json({
     success: true,
     message: 'Verification code sent to your email',
@@ -91,7 +91,13 @@ export const getMe = async (req, res) => {
   res.status(200).json({
     success: true,
     data: {
-      user: { id: user._id, name: user.name, email: user.email, role: user.role },
+      user: {
+        id: user._id,
+        username: user.username,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
     },
   });
 };

@@ -2,7 +2,11 @@ paths:
   /api/v1/auth/signup/request-otp:
     post:
       summary: Request an OTP for signup
-      description: Creates an unverified user, generates a 6-digit OTP, and sends it via email.
+      description: >-
+        Creates an unverified user, generates a 6-digit OTP, and queues the email for delivery.
+        Pending accounts reserve their username until verified or removed by the 24-hour TTL index.
+        Retrying with the same email replaces that email's unverified account; the requested
+        username must not belong to another email.
       tags: [Auth]
       requestBody:
         required: true
@@ -10,11 +14,30 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name, email, password]
+              required: [username, email, password]
               properties:
-                name: { type: string, example: John Doe }
-                email: { type: string, format: email, example: john@example.com }
-                password: { type: string, format: password, example: Password123! }
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 30
+                  pattern: '^[a-z0-9_.-]+$'
+                  example: john_doe.1-a
+                  description: >-
+                    Lowercase letters, numbers, underscores, hyphens, and periods only.
+                    Reserved names (admin, support, root, api, help, security, noreply,
+                    postmaster) cannot be used.
+                email:
+                  type: string
+                  format: email
+                  minLength: 5
+                  maxLength: 254
+                  example: john@example.com
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  maxLength: 72
+                  example: Password123!
       responses:
         '200':
           description: OTP sent successfully

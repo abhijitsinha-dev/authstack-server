@@ -21,7 +21,7 @@ const validate = (schema, payload) =>
 describe('auth.validator', () => {
   describe('requestOtpSchema', () => {
     const validPayload = {
-      name: 'John Doe',
+      username: 'john_doe.1-a',
       email: 'john@example.com',
       password: 'Password123!',
     };
@@ -32,48 +32,75 @@ describe('auth.validator', () => {
       expect(value).toEqual(validPayload);
     });
 
-    it('should reject a missing name', () => {
-      const { error } = validate(requestOtpSchema, { ...validPayload, name: undefined });
+    it('should reject a missing username', () => {
+      const payload = {
+        email: validPayload.email,
+        password: validPayload.password,
+      };
+      const { error } = validate(requestOtpSchema, payload);
       expect(error).toBeDefined();
-      expect(error.details[0].path).toContain('name');
-      expect(error.details[0].message).toBe('Name is required.');
+      expect(error.details[0].path).toContain('username');
+      expect(error.details[0].message).toBe('Username is required.');
     });
 
-    it('should reject an empty name', () => {
-      const { error } = validate(requestOtpSchema, { ...validPayload, name: '' });
-      expect(error).toBeDefined();
-      expect(error.details[0].path).toContain('name');
-      expect(error.details[0].message).toBe('Name is required.');
-    });
-
-    it('should reject a name shorter than 2 characters', () => {
-      const { error } = validate(requestOtpSchema, { ...validPayload, name: 'J' });
-      expect(error).toBeDefined();
-      expect(error.details[0].message).toContain('2');
-    });
-
-    it('should reject a name longer than 50 characters', () => {
+    it('should reject the old name field without a username', () => {
       const { error } = validate(requestOtpSchema, {
-        ...validPayload,
-        name: 'a'.repeat(51),
+        name: 'John Doe',
+        email: validPayload.email,
+        password: validPayload.password,
       });
       expect(error).toBeDefined();
-      expect(error.details[0].message).toContain('50');
+      expect(error.details[0].path).toContain('username');
+      expect(error.details[0].message).toBe('Username is required.');
     });
 
-    it('should trim leading/trailing whitespace from the name', () => {
-      const { error, value } = validate(requestOtpSchema, {
+    it.each(['John', 'john doe', 'john!'])('should reject invalid username "%s"', (username) => {
+      const { error } = validate(requestOtpSchema, { ...validPayload, username });
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toContain('username');
+    });
+
+    it.each(['admin', 'support', 'root', 'api', 'help', 'security', 'noreply', 'postmaster'])(
+      'should reject reserved username "%s"',
+      (username) => {
+        const { error } = validate(requestOtpSchema, { ...validPayload, username });
+        expect(error).toBeDefined();
+        expect(error.details[0].message).toBe(`${username} is not allowed`);
+      }
+    );
+
+    it('should enforce the 3-30 character username limit', () => {
+      const { error: shortError } = validate(requestOtpSchema, {
         ...validPayload,
-        name: '  John Doe  ',
+        username: 'ab',
       });
-      expect(error).toBeUndefined();
-      expect(value.name).toBe('John Doe');
+      expect(shortError.details[0].message).toContain('3');
+
+      const { error: longError } = validate(requestOtpSchema, {
+        ...validPayload,
+        username: 'a'.repeat(31),
+      });
+      expect(longError.details[0].message).toContain('30');
     });
 
     it('should reject an invalid email format', () => {
       const { error } = validate(requestOtpSchema, { ...validPayload, email: 'not-an-email' });
       expect(error).toBeDefined();
       expect(error.details[0].path).toContain('email');
+    });
+
+    it('should enforce the 5-254 character email limit', () => {
+      const { error: shortError } = validate(requestOtpSchema, {
+        ...validPayload,
+        email: 'a@b',
+      });
+      expect(shortError.details[0].message).toContain('5');
+
+      const { error: longError } = validate(requestOtpSchema, {
+        ...validPayload,
+        email: `${'a'.repeat(243)}@example.com`,
+      });
+      expect(longError.details[0].message).toContain('254');
     });
 
     it('should lowercase the email automatically', () => {
@@ -282,6 +309,15 @@ describe('auth.validator', () => {
       expect(error).toBeDefined();
       expect(error.details[0].path).toContain('password');
       expect(error.details[0].message).toBe('Password is required.');
+    });
+
+    it('should reject a password longer than 72 characters without exposing account state', () => {
+      const { error } = validate(loginSchema, {
+        ...validPayload,
+        password: `A1!${'a'.repeat(70)}`,
+      });
+      expect(error).toBeDefined();
+      expect(error.details[0].message).toBe('Invalid email or password.');
     });
   });
 

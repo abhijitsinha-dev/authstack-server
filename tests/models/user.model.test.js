@@ -25,10 +25,87 @@ afterEach(async () => {
 
 describe('User Model', () => {
   const validUser = {
-    name: 'John Doe',
+    username: 'john_doe.1-a',
     email: 'john@example.com',
     password: 'Password123!',
   };
+  const maxLengthEmail = `${'a'.repeat(64)}@${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(62)}`;
+
+  it('should expire unverified accounts 24 hours after creation', () => {
+    const ttlIndex = User.schema.indexes().find(([indexKeys]) => indexKeys.createdAt === 1);
+
+    expect(ttlIndex).toBeDefined();
+    expect(ttlIndex[0]).toEqual({ createdAt: 1 });
+    expect(ttlIndex[1]).toMatchObject({
+      expireAfterSeconds: 24 * 60 * 60,
+      partialFilterExpression: { isVerified: false },
+    });
+  });
+
+  it('should allow name to be omitted', async () => {
+    const user = new User(validUser);
+
+    await expect(user.validate()).resolves.toBeUndefined();
+  });
+
+  it('should require a username', async () => {
+    const userWithoutUsername = {
+      email: validUser.email,
+      password: validUser.password,
+    };
+    const user = new User(userWithoutUsername);
+
+    await expect(user.validate()).rejects.toMatchObject({
+      errors: { username: expect.any(Object) },
+    });
+  });
+
+  it.each([
+    ['username', 'ab', 'minlength'],
+    ['username', 'a'.repeat(31), 'maxlength'],
+    ['email', 'a@b', 'minlength'],
+    ['email', maxLengthEmail, 'maxlength'],
+    ['password', 'Ab1!xyz', 'minlength'],
+    ['password', `A1!${'a'.repeat(70)}`, 'maxlength'],
+  ])('should enforce %s length limits', async (field, value, validatorType) => {
+    const user = new User({ ...validUser, [field]: value });
+
+    await expect(user.validate()).rejects.toMatchObject({
+      errors: { [field]: { properties: { type: validatorType } } },
+    });
+  });
+
+  it('should accept usernames containing only lowercase letters, numbers, _, -, and .', async () => {
+    const user = new User(validUser);
+
+    await expect(user.validate()).resolves.toBeUndefined();
+  });
+
+  it('should lowercase usernames before validation', async () => {
+    const user = new User({ ...validUser, username: 'John' });
+
+    await expect(user.validate()).resolves.toBeUndefined();
+    expect(user.username).toBe('john');
+  });
+
+  it.each(['john doe', 'john!'])('should reject invalid username "%s"', async (username) => {
+    const user = new User({ ...validUser, username });
+
+    await expect(user.validate()).rejects.toMatchObject({
+      errors: { username: expect.any(Object) },
+    });
+  });
+
+  it.each(['admin', 'support', 'root', 'api', 'help', 'security', 'noreply', 'postmaster'])(
+    'should reject reserved username "%s"',
+    async (username) => {
+      const user = new User({ ...validUser, username });
+
+      await expect(user.validate()).rejects.toMatchObject({
+        errors: { username: { message: `${username} is not allowed` } },
+      });
+    }
+  );
 
   it('should hash the password before saving', async () => {
     // 1. Create and save the user

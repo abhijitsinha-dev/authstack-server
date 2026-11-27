@@ -1,11 +1,31 @@
 import Joi from 'joi';
 import isStrongPassword from 'validator/lib/isStrongPassword.js';
 
-export const emailField = Joi.string().email().lowercase().trim().required().messages({
-  'any.required': 'Email is required.',
-  'string.empty': 'Email is required.',
-  'string.email': 'Please provide a valid email address.',
-});
+export const RESERVED_USERNAMES = new Set([
+  'admin',
+  'support',
+  'root',
+  'api',
+  'help',
+  'security',
+  'noreply',
+  'postmaster',
+]);
+
+export const emailField = Joi.string()
+  .min(5)
+  .max(254)
+  .email()
+  .lowercase()
+  .trim()
+  .required()
+  .messages({
+    'any.required': 'Email is required.',
+    'string.empty': 'Email is required.',
+    'string.min': 'Email must be at least 5 characters long.',
+    'string.max': 'Email must be at most 254 characters long.',
+    'string.email': 'Please provide a valid email address.',
+  });
 
 export const strongPasswordField = Joi.string()
   .min(8)
@@ -24,16 +44,26 @@ export const strongPasswordField = Joi.string()
     'any.required': 'Password is required.',
     'string.empty': 'Password is required.',
     'string.min': 'Password must be at least 8 characters long.',
-    'string.max': 'Password must be less than 72 characters long.',
+    'string.max': 'Password must be at most 72 characters long.',
   });
 
-export const loginEmailField = Joi.string().email().lowercase().trim().required().messages({
-  'any.required': 'Email is required.',
-  'string.empty': 'Email is required.',
-  'string.email': 'Invalid email or password.',
-});
+export const loginEmailField = Joi.string()
+  .min(5)
+  .max(254)
+  .email()
+  .lowercase()
+  .trim()
+  .required()
+  .messages({
+    'any.required': 'Email is required.',
+    'string.empty': 'Email is required.',
+    'string.min': 'Invalid email or password.',
+    'string.max': 'Invalid email or password.',
+    'string.email': 'Invalid email or password.',
+  });
 
-export const loginPasswordField = Joi.string().required().messages({
+export const loginPasswordField = Joi.string().max(72).required().messages({
   'any.required': 'Password is required.',
   'string.empty': 'Password is required.',
+  'string.max': 'Invalid email or password.',
 });

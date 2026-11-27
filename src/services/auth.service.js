@@ -18,26 +18,60 @@ const MAX_OTP_ATTEMPTS = 5;
 // OTP validity window — must match the expiresAt set when creating the OTP
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
-export const requestSignupOtp = async ({ name, email, password }) => {
-  const existingUser = await User.findOne({ email });
+export const requestSignupOtp = async ({ username, email, password }) => {
+  const [emailOwner, usernameOwner] = await Promise.all([
+    User.findOne({ email }),
+    User.findOne({ username }),
+  ]);
 
-  if (existingUser && existingUser.isVerified) {
+  // 1. Email belongs to a verified account → log in instead
+  if (emailOwner?.isVerified) {
     throw new ApiError(409, 'An account with this email already exists. Please log in.');
   }
 
-  if (existingUser && !existingUser.isVerified) {
-    await User.deleteOne({ _id: existingUser._id });
+  // 2. Username owned by a different (pending or verified) account → take another
+  if (usernameOwner && (usernameOwner?.email !== email || usernameOwner?.isVerified)) {
+    throw new ApiError(
+      409,
+      'An account with this username already exists. Please choose another username.'
+    );
   }
 
-  await User.create({ name, email, password });
+  // 3. Clean up stale unverified records (case 1 & 3)
+  const staleIds = [emailOwner?._id, usernameOwner?._id].filter(Boolean);
+  if (staleIds.length) {
+    await User.deleteMany({ _id: { $in: staleIds }, isVerified: false });
+  }
 
+  // 4. Create pending user (catch race)
+  try {
+    await User.create({
+      username,
+      email,
+      password,
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // TTL
+    });
+  } catch (err) {
+    if (err.code === 11000) {
+      throw new ApiError(409, 'That username or email just got taken. Please try again.');
+    }
+    throw err;
+  }
+
+  // 5. OTP (upsert to avoid duplicates)
   const { otp, hashedOtp } = await generateHashedOtp();
-  const expiresAt = new Date(Date.now() + OTP_TTL_MS);
+  await Otp.findOneAndUpdate(
+    { email, purpose: 'signup' },
+    {
+      $set: {
+        codeHash: hashedOtp,
+        expiresAt: new Date(Date.now() + OTP_TTL_MS),
+      },
+    },
+    { upsert: true }
+  );
 
-  await Otp.deleteMany({ email, purpose: 'signup' });
-  await Otp.create({ email, codeHash: hashedOtp, expiresAt, purpose: 'signup' });
-
-  await emailQueue.add('send-otp', { email, name, otp });
+  await emailQueue.add('send-otp', { email, username, otp });
 };
 
 export const resendSignupOtp = async ({ email }) => {
@@ -61,7 +95,7 @@ export const resendSignupOtp = async ({ email }) => {
   await Otp.deleteMany({ email, purpose: 'signup' });
   await Otp.create({ email, codeHash: hashedOtp, expiresAt, purpose: 'signup' });
 
-  await sendSignupOtpEmail(email, user.name, otp);
+  await sendSignupOtpEmail(email, user.name || user.username, otp);
 
   logger.info(`Resent OTP email sent synchronously to ${email}`);
 };
@@ -365,7 +399,7 @@ export const requestEmailChange = async ({ userId, newEmail, currentPassword }) 
     purpose: 'email-change',
   });
 
-  await sendEmailChangeOtpEmail(newEmail, user.name, otp);
+  await sendEmailChangeOtpEmail(newEmail, user.name || user.username, otp);
 
   logger.info(`Email change OTP sent synchronously to ${newEmail} for user ${userId}`);
 };
@@ -470,7 +504,7 @@ export const requestPasswordReset = async ({ email }) => {
 
   await emailQueue.add('send-reset-otp', {
     email,
-    name: user.name,
+    name: user.name || user.username,
     otp,
   });
 };

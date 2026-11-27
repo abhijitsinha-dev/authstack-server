@@ -19,6 +19,7 @@ We use ADRs to document significant technical decisions, their context, and thei
 - **[ADR-003: Defense-in-Depth Rate Limiting](./decisions/ADR-003-defense-in-depth-rate-limiting.md)**
 - **[ADR-004: JWT Token Strategy & Session Management](./decisions/ADR-004-token-strategy.md)**
 - **[ADR-005: Modular YAML API Documentation](./decisions/ADR-005-modular-swagger.md)** _(New)_
+- **[ADR-006: Reserve Usernames During Signup Verification](./decisions/ADR-006-signup-username-reservation.md)**
 
 ### API Specifications
 

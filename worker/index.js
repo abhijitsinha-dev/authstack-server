@@ -24,8 +24,8 @@ const worker = new Worker(
 
     // 👇 Signup OTP Handler
     if (job.name === 'send-otp') {
-      const { email, name, otp } = job.data;
-      await sendSignupOtpEmail(email, name, otp);
+      const { email, username, name, otp } = job.data;
+      await sendSignupOtpEmail(email, username || name, otp);
     }
 
     // 👇 Password Reset OTP Handler

@@ -7,7 +7,13 @@
  */
 export const sendAuthResponse = (req, res, user, accessToken, refreshToken, message) => {
   const isMobile = req.headers['user-agent']?.match(/mobile|android|iphone/i);
-  const userResponse = { id: user._id, name: user.name, email: user.email, role: user.role };
+  const userResponse = {
+    id: user._id,
+    username: user.username,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+  };
 
   if (isMobile) {
     return res.status(200).json({

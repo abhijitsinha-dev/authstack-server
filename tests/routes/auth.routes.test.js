@@ -49,12 +49,11 @@ describe('POST /api/v1/auth/signup/request-otp', () => {
 
   it('should return 200 and queue an email for valid input', async () => {
     jest.spyOn(User, 'findOne').mockResolvedValue(null);
-    jest.spyOn(User, 'create').mockResolvedValue({ _id: '123', name: 'John Doe' });
-    jest.spyOn(Otp, 'deleteMany').mockResolvedValue({});
-    jest.spyOn(Otp, 'create').mockResolvedValue({});
+    jest.spyOn(User, 'create').mockResolvedValue({ _id: '123', username: 'john_doe' });
+    jest.spyOn(Otp, 'findOneAndUpdate').mockResolvedValue({});
 
     const response = await request(app).post('/api/v1/auth/signup/request-otp').send({
-      name: 'John Doe',
+      username: 'john_doe',
       email: 'john@example.com',
       password: 'Password123!',
     });
@@ -64,9 +63,19 @@ describe('POST /api/v1/auth/signup/request-otp', () => {
     expect(emailQueue.add).toHaveBeenCalledTimes(1);
   });
 
+  it('should return 400 for invalid username', async () => {
+    const response = await request(app).post('/api/v1/auth/signup/request-otp').send({
+      username: 'John Doe',
+      email: 'john@example.com',
+      password: 'Password123!',
+    });
+
+    expect(response.status).toBe(400);
+  });
+
   it('should return 400 for invalid email', async () => {
     const response = await request(app).post('/api/v1/auth/signup/request-otp').send({
-      name: 'John Doe',
+      username: 'john_doe',
       email: 'not-an-email',
       password: 'Password123!',
     });
@@ -319,6 +328,7 @@ describe('GET /api/v1/auth/me', () => {
     jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
     jest.spyOn(User, 'findById').mockResolvedValue({
       _id: 'u1',
+      username: 'john',
       name: 'John Doe',
       email: 'john@example.com',
       role: 'user',
@@ -331,6 +341,7 @@ describe('GET /api/v1/auth/me', () => {
     expect(response.status).toBe(200);
     expect(response.body.data.user).toEqual({
       id: 'u1',
+      username: 'john',
       name: 'John Doe',
       email: 'john@example.com',
       role: 'user',

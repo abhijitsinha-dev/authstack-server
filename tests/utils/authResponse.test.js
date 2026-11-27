@@ -21,6 +21,7 @@ describe('authResponse utility', () => {
 
     mockUser = {
       _id: 'u1',
+      username: 'john',
       name: 'John Doe',
       email: 'john@example.com',
       role: 'user',
@@ -51,6 +52,7 @@ describe('authResponse utility', () => {
       data: {
         user: {
           id: 'u1',
+          username: 'john',
           name: 'John Doe',
           email: 'john@example.com',
           role: 'user',
@@ -76,6 +78,7 @@ describe('authResponse utility', () => {
       data: {
         user: {
           id: 'u1',
+          username: 'john',
           name: 'John Doe',
           email: 'john@example.com',
           role: 'user',

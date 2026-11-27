@@ -1,16 +1,39 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import { isEmail, isStrongPassword } from '../utils/validator.js';
+import { RESERVED_USERNAMES } from '../validators/fields.js';
 
 const userSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true, trim: true },
+    name: {
+      type: String,
+      trim: true,
+      maxlength: [100, 'Name must be at most 100 characters long.'],
+    },
+    username: {
+      type: String,
+      required: true,
+      unique: true,
+      minlength: [3, 'Username must be at least 3 characters long.'],
+      maxlength: [30, 'Username must be at most 30 characters long.'],
+      match: [
+        /^[a-z0-9_.-]+$/,
+        'Username may only contain lowercase letters, numbers, and _, -, or .',
+      ],
+      lowercase: true,
+      validate: {
+        validator: (username) => !RESERVED_USERNAMES.has(username),
+        message: ({ value }) => `${value} is not allowed`,
+      },
+    },
     email: {
       type: String,
       required: true,
       unique: true,
       lowercase: true,
       trim: true,
+      minlength: [5, 'Email must be at least 5 characters long.'],
+      maxlength: [254, 'Email must be at most 254 characters long.'],
       validate: {
         validator: isEmail,
         message: 'Please provide a valid email address.',
@@ -20,6 +43,8 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true,
       select: false,
+      minlength: [8, 'Password must be at least 8 characters long.'],
+      maxlength: [72, 'Password must be at most 72 characters long.'],
       validate: {
         // Must be a regular function to access `this`
         validator: function (value) {
@@ -37,6 +62,11 @@ const userSchema = new mongoose.Schema(
     isVerified: { type: Boolean, default: false },
   },
   { timestamps: true }
+);
+
+userSchema.index(
+  { createdAt: 1 },
+  { expireAfterSeconds: 24 * 60 * 60, partialFilterExpression: { isVerified: false } }
 );
 
 // Hash password before saving

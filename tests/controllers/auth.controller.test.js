@@ -83,13 +83,17 @@ describe('auth.controller', () => {
 
   describe('requestOtp', () => {
     it('should call the service and return 200 with the correct payload', async () => {
-      req.body = { name: 'John', email: 'john@example.com', password: 'Password123!' };
+      req.body = {
+        username: 'john',
+        email: 'john@example.com',
+        password: 'Password123!',
+      };
       requestSignupOtp.mockResolvedValue({});
 
       await requestOtp(req, res);
 
       expect(requestSignupOtp).toHaveBeenCalledWith({
-        name: 'John',
+        username: 'john',
         email: 'john@example.com',
         password: 'Password123!',
       });
@@ -138,7 +142,13 @@ describe('auth.controller', () => {
   });
 
   describe('verifyOtp', () => {
-    const mockUser = { _id: 'u1', name: 'John', email: 'test@example.com', role: 'user' };
+    const mockUser = {
+      _id: 'u1',
+      username: 'john',
+      name: 'John',
+      email: 'test@example.com',
+      role: 'user',
+    };
     const mockTokens = { accessToken: 'fake-access', refreshToken: 'fake-refresh' };
 
     beforeEach(() => {
@@ -167,7 +177,13 @@ describe('auth.controller', () => {
         success: true,
         message: 'Account verified successfully',
         data: {
-          user: { id: 'u1', name: 'John', email: 'test@example.com', role: 'user' },
+          user: {
+            id: 'u1',
+            username: 'john',
+            name: 'John',
+            email: 'test@example.com',
+            role: 'user',
+          },
           accessToken: 'fake-access',
         },
       });
@@ -186,7 +202,13 @@ describe('auth.controller', () => {
         success: true,
         message: 'Account verified successfully',
         data: {
-          user: { id: 'u1', name: 'John', email: 'test@example.com', role: 'user' },
+          user: {
+            id: 'u1',
+            username: 'john',
+            name: 'John',
+            email: 'test@example.com',
+            role: 'user',
+          },
           accessToken: 'fake-access',
           refreshToken: 'fake-refresh',
         },
@@ -205,7 +227,13 @@ describe('auth.controller', () => {
   });
 
   describe('login', () => {
-    const mockUser = { _id: 'u1', name: 'John', email: 'test@example.com', role: 'user' };
+    const mockUser = {
+      _id: 'u1',
+      username: 'john',
+      name: 'John',
+      email: 'test@example.com',
+      role: 'user',
+    };
     const mockTokens = { accessToken: 'fake-access', refreshToken: 'fake-refresh' };
 
     beforeEach(() => {
@@ -234,7 +262,13 @@ describe('auth.controller', () => {
         success: true,
         message: 'Logged in successfully',
         data: {
-          user: { id: 'u1', name: 'John', email: 'test@example.com', role: 'user' },
+          user: {
+            id: 'u1',
+            username: 'john',
+            name: 'John',
+            email: 'test@example.com',
+            role: 'user',
+          },
           accessToken: 'fake-access',
         },
       });
@@ -251,7 +285,13 @@ describe('auth.controller', () => {
         success: true,
         message: 'Logged in successfully',
         data: {
-          user: { id: 'u1', name: 'John', email: 'test@example.com', role: 'user' },
+          user: {
+            id: 'u1',
+            username: 'john',
+            name: 'John',
+            email: 'test@example.com',
+            role: 'user',
+          },
           accessToken: 'fake-access',
           refreshToken: 'fake-refresh',
         },
@@ -333,6 +373,7 @@ describe('auth.controller', () => {
     it('should return the current user with Cache-Control header', async () => {
       getCurrentUser.mockResolvedValue({
         _id: 'u1',
+        username: 'john',
         name: 'John',
         email: 'j@example.com',
         role: 'user',
@@ -346,7 +387,13 @@ describe('auth.controller', () => {
       expect(res.json).toHaveBeenCalledWith({
         success: true,
         data: {
-          user: { id: 'u1', name: 'John', email: 'j@example.com', role: 'user' },
+          user: {
+            id: 'u1',
+            username: 'john',
+            name: 'John',
+            email: 'j@example.com',
+            role: 'user',
+          },
         },
       });
     });

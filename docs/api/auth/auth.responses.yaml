@@ -10,9 +10,12 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
           examples:
-            missing_name:
-              summary: Missing Name
-              value: { success: false, message: 'Name is required.' }
+            missing_username:
+              summary: Missing Username
+              value: { success: false, message: 'Username is required.' }
+            reserved_username:
+              summary: Reserved Username
+              value: { success: false, message: 'admin is not allowed' }
             missing_email:
               summary: Missing Email
               value: { success: false, message: 'Email is required.' }
@@ -31,13 +34,33 @@ components:
                 }
 
     RequestOtpConflict:
-      description: Email already exists and is verified
+      description: The email already belongs to a verified account or the username is taken
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
-          example:
-            { success: false, message: 'An account with this email already exists. Please log in.' }
+          examples:
+            email_already_exists:
+              summary: Email already belongs to a verified account
+              value:
+                {
+                  success: false,
+                  message: 'An account with this email already exists. Please log in.',
+                }
+            username_already_exists:
+              summary: Username is already taken
+              value:
+                {
+                  success: false,
+                  message: 'An account with this username already exists. Please choose another username.',
+                }
+            concurrent_signup:
+              summary: Email or username was claimed by a concurrent signup
+              value:
+                {
+                  success: false,
+                  message: 'That username or email just got taken. Please try again.',
+                }
 
     # ─────────────────────────────────────────────
     # Resend OTP Responses
@@ -99,7 +122,20 @@ components:
                 data:
                   user:
                     id: '60d5ecb8b392d7001f3f4e1a'
+                    username: 'john_doe'
                     name: 'John Doe'
+                    email: 'john@example.com'
+                    role: 'user'
+                  accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+            web_without_name:
+              summary: Web client — optional name omitted
+              value:
+                success: true
+                message: Account verified successfully
+                data:
+                  user:
+                    id: '60d5ecb8b392d7001f3f4e1a'
+                    username: 'john_doe'
                     email: 'john@example.com'
                     role: 'user'
                   accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
@@ -111,7 +147,21 @@ components:
                 data:
                   user:
                     id: '60d5ecb8b392d7001f3f4e1a'
+                    username: 'john_doe'
                     name: 'John Doe'
+                    email: 'john@example.com'
+                    role: 'user'
+                  accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+                  refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+            mobile_without_name:
+              summary: Mobile client — optional name omitted
+              value:
+                success: true
+                message: Account verified successfully
+                data:
+                  user:
+                    id: '60d5ecb8b392d7001f3f4e1a'
+                    username: 'john_doe'
                     email: 'john@example.com'
                     role: 'user'
                   accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
@@ -187,7 +237,20 @@ components:
                 data:
                   user:
                     id: '60d5ecb8b392d7001f3f4e1a'
+                    username: 'john_doe'
                     name: 'John Doe'
+                    email: 'john@example.com'
+                    role: 'user'
+                  accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+            web_without_name:
+              summary: Web client — optional name omitted
+              value:
+                success: true
+                message: Logged in successfully
+                data:
+                  user:
+                    id: '60d5ecb8b392d7001f3f4e1a'
+                    username: 'john_doe'
                     email: 'john@example.com'
                     role: 'user'
                   accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
@@ -199,7 +262,21 @@ components:
                 data:
                   user:
                     id: '60d5ecb8b392d7001f3f4e1a'
+                    username: 'john_doe'
                     name: 'John Doe'
+                    email: 'john@example.com'
+                    role: 'user'
+                  accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+                  refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+            mobile_without_name:
+              summary: Mobile client — optional name omitted
+              value:
+                success: true
+                message: Logged in successfully
+                data:
+                  user:
+                    id: '60d5ecb8b392d7001f3f4e1a'
+                    username: 'john_doe'
                     email: 'john@example.com'
                     role: 'user'
                   accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
@@ -231,7 +308,7 @@ components:
           example: { success: false, message: 'Invalid email or password.' }
 
     # ─────────────────────────────────────────────
-    # NEW: Refresh Token Responses
+    # Refresh Token Responses
     # ─────────────────────────────────────────────
     RefreshSuccess:
       description: |
@@ -275,7 +352,7 @@ components:
                   refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
 
     # ─────────────────────────────────────────────
-    # NEW: Current User Response
+    # Current User Response
     # ─────────────────────────────────────────────
     MeSuccess:
       description: |
@@ -283,20 +360,35 @@ components:
         `user` field returned by `/login` and `/signup/verify-otp`, so
         clients can share the same parser.
 
+        `name` is optional and is omitted when the user has not set a display name.
         The response is marked `Cache-Control: no-store` — user data must
         never be cached by proxies or shared caches.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/MeSuccessResponse'
-          example:
-            success: true
-            data:
-              user:
-                id: '60d5ecb8b392d7001f3f4e1a'
-                name: 'John Doe'
-                email: 'john@example.com'
-                role: 'user'
+          examples:
+            with_name:
+              summary: User has set a display name
+              value:
+                success: true
+                data:
+                  user:
+                    id: '60d5ecb8b392d7001f3f4e1a'
+                    username: 'john_doe'
+                    name: 'John Doe'
+                    email: 'john@example.com'
+                    role: 'user'
+            without_name:
+              summary: User has not set a display name
+              value:
+                success: true
+                data:
+                  user:
+                    id: '60d5ecb8b392d7001f3f4e1a'
+                    username: 'john_doe'
+                    email: 'john@example.com'
+                    role: 'user'
 
     # ─────────────────────────────────────────────
     # Logout Responses

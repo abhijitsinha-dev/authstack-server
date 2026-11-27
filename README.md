@@ -136,10 +136,10 @@ All business logic routes are versioned under `/api/v1`. Rate limits shown below
 
 **`POST /signup/request-otp`**
 
-- **Body:** `{ name, email, password }`
-- **Description:** Creates an unverified user, generates an OTP, and pushes a job to BullMQ (async).
+- **Body:** `{ username, email, password }`. Username must be 3-30 lowercase letters, numbers, `_`, `-`, or `.`; `admin`, `support`, `root`, `api`, `help`, `security`, `noreply`, and `postmaster` are reserved. Email must be 5-254 characters; password must be 8-72 characters.
+- **Description:** Creates an unverified user, generates an OTP, and pushes a job to BullMQ (async). A pending account reserves its username until verified or removed by the 24-hour TTL index. Retrying with the same email replaces its pending account; the requested username must not belong to another email.
 - **Rate Limit:** 5 req/min.
-- **Errors:** `400` (validation), `409` (email already registered), `429` (rate limit), `500` (server / email).
+- **Errors:** `400` (validation), `409` (verified email, username already taken, or concurrent signup conflict), `429` (rate limit), `500` (server / email).
 
 **`POST /signup/resend-otp`**
 
