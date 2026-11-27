@@ -1,6 +1,72 @@
 components:
   responses:
     # ─────────────────────────────────────────────
+    # Username Availability Responses
+    # ─────────────────────────────────────────────
+    UsernameAvailabilitySuccess:
+      description: Username availability result
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UsernameAvailabilitySuccessResponse'
+          examples:
+            available:
+              summary: Username is available
+              value: { success: true, data: { available: true } }
+            unavailable:
+              summary: Username belongs to a verified account
+              value: { success: true, data: { available: false } }
+
+    UsernameAvailabilityBadRequest:
+      description: Missing, invalid, or reserved username
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            missing_username:
+              summary: Username was not provided
+              value: { success: false, message: 'Username is required.' }
+            invalid_username:
+              summary: Username does not match the allowed format
+              value:
+                {
+                  success: false,
+                  message: 'Username may only contain lowercase letters, numbers, and _, -, or .',
+                }
+            reserved_username:
+              summary: Username is reserved
+              value: { success: false, message: 'admin is not allowed' }
+
+    EmailAvailabilitySuccess:
+      description: Email availability result
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/EmailAvailabilitySuccessResponse'
+          examples:
+            available:
+              summary: Email is available
+              value: { success: true, data: { available: true } }
+            unavailable:
+              summary: Email belongs to a verified account
+              value: { success: true, data: { available: false } }
+
+    EmailAvailabilityBadRequest:
+      description: Missing or invalid email address
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            missing_email:
+              summary: Email was not provided
+              value: { success: false, message: 'Email is required.' }
+            invalid_email:
+              summary: Email address is invalid
+              value: { success: false, message: 'Please provide a valid email address.' }
+
+    # ─────────────────────────────────────────────
     # Request OTP Responses
     # ─────────────────────────────────────────────
     RequestOtpBadRequest:
@@ -34,7 +100,7 @@ components:
                 }
 
     RequestOtpConflict:
-      description: The email already belongs to a verified account or the username is taken
+      description: The email or username already belongs to a verified account
       content:
         application/json:
           schema:

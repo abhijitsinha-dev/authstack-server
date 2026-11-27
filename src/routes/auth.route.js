@@ -15,6 +15,8 @@ import {
   verifyEmailChangeController,
   forgotPassword,
   resetPasswordController,
+  checkUsernameAvailability,
+  checkEmailAvailability,
 } from '../controllers/auth.controller.js';
 import {
   requestOtpSchema,
@@ -26,8 +28,10 @@ import {
   verifyEmailChangeSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  usernameAvailabilitySchema,
+  emailAvailabilitySchema,
 } from '../validators/auth.validator.js';
-import { validate } from '../middlewares/validate.middleware.js';
+import { validateBody, validateQuery } from '../middlewares/validate.middleware.js';
 import { rateLimit } from '../middlewares/rateLimit.middleware.js';
 import { protect } from '../middlewares/auth.middleware.js';
 
@@ -38,11 +42,33 @@ const DEV_LIMIT = 100;
 // ─────────────────────────────────────────────
 // Signup
 // ─────────────────────────────────────────────
+router.get(
+  '/username-availability',
+  rateLimit({
+    limit: isProduction ? 10 : DEV_LIMIT,
+    window: '1 m',
+    prefix: 'ratelimit:username-availability',
+  }),
+  validateQuery(usernameAvailabilitySchema),
+  checkUsernameAvailability
+);
+
+router.get(
+  '/email-availability',
+  rateLimit({
+    limit: isProduction ? 10 : DEV_LIMIT,
+    window: '1 m',
+    prefix: 'ratelimit:email-availability',
+  }),
+  validateQuery(emailAvailabilitySchema),
+  checkEmailAvailability
+);
+
 router
   .route('/signup/request-otp')
   .post(
     rateLimit({ limit: isProduction ? 5 : DEV_LIMIT, window: '1 m', prefix: 'ratelimit:req-otp' }),
-    validate(requestOtpSchema),
+    validateBody(requestOtpSchema),
     requestOtp
   );
 
@@ -52,7 +78,7 @@ router.route('/signup/resend-otp').post(
     window: '20 s',
     prefix: 'ratelimit:resend-otp',
   }),
-  validate(resendOtpSchema),
+  validateBody(resendOtpSchema),
   resendOtp
 );
 
@@ -62,7 +88,7 @@ router.route('/signup/verify-otp').post(
     window: '1 m',
     prefix: 'ratelimit:verify-otp',
   }),
-  validate(verifyOtpSchema),
+  validateBody(verifyOtpSchema),
   verifyOtp
 );
 
@@ -73,7 +99,7 @@ router
   .route('/login')
   .post(
     rateLimit({ limit: isProduction ? 5 : DEV_LIMIT, window: '1 m', prefix: 'ratelimit:login' }),
-    validate(loginSchema),
+    validateBody(loginSchema),
     login
   );
 
@@ -144,7 +170,7 @@ router.route('/change-email/request-otp').post(
     prefix: 'ratelimit:change-email-req',
   }),
   protect,
-  validate(requestEmailChangeSchema),
+  validateBody(requestEmailChangeSchema),
   requestEmailChangeController
 );
 
@@ -155,7 +181,7 @@ router.route('/change-email/verify-otp').post(
     prefix: 'ratelimit:change-email-verify',
   }),
   protect,
-  validate(verifyEmailChangeSchema),
+  validateBody(verifyEmailChangeSchema),
   verifyEmailChangeController
 );
 
@@ -169,7 +195,7 @@ router.route('/change-password').post(
     prefix: 'ratelimit:change-password',
   }),
   protect,
-  validate(changePasswordSchema),
+  validateBody(changePasswordSchema),
   changePasswordController
 );
 
@@ -179,7 +205,7 @@ router.route('/forgot-password').post(
     window: '15 m',
     prefix: 'ratelimit:forgot-password',
   }),
-  validate(forgotPasswordSchema),
+  validateBody(forgotPasswordSchema),
   forgotPassword
 );
 
@@ -189,7 +215,7 @@ router.route('/reset-password').post(
     window: '15 m',
     prefix: 'ratelimit:reset-password',
   }),
-  validate(resetPasswordSchema),
+  validateBody(resetPasswordSchema),
   resetPasswordController
 );
 

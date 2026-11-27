@@ -44,13 +44,104 @@ const sha256 = (t) => crypto.createHash('sha256').update(t).digest('hex');
 // 3. TESTS
 // ─────────────────────────────────────────────
 
+describe('GET /api/v1/auth/username-availability', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns only the availability result for a free username', async () => {
+    jest.spyOn(User, 'exists').mockResolvedValue(null);
+
+    const response = await request(app)
+      .get('/api/v1/auth/username-availability')
+      .query({ username: 'john_doe' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ success: true, data: { available: true } });
+    expect(response.headers['cache-control']).toBe('no-store');
+  });
+
+  it('rejects a reserved username', async () => {
+    const response = await request(app)
+      .get('/api/v1/auth/username-availability')
+      .query({ username: 'admin' });
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('admin is not allowed');
+  });
+
+  it('returns unavailable when a user already owns the username', async () => {
+    jest.spyOn(User, 'exists').mockResolvedValue({ _id: 'existing-id' });
+
+    const response = await request(app)
+      .get('/api/v1/auth/username-availability')
+      .query({ username: 'john_doe' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ success: true, data: { available: false } });
+  });
+
+  it('validates the username query parameter', async () => {
+    const response = await request(app)
+      .get('/api/v1/auth/username-availability')
+      .query({ username: 'John Doe' });
+
+    expect(response.status).toBe(400);
+  });
+
+  it('requires a username query parameter', async () => {
+    const response = await request(app).get('/api/v1/auth/username-availability');
+
+    expect(response.status).toBe(400);
+    expect(response.body.message).toBe('Username is required.');
+  });
+});
+
+describe('GET /api/v1/auth/email-availability', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns available when no verified account owns the normalized email', async () => {
+    jest.spyOn(User, 'exists').mockResolvedValue(null);
+
+    const response = await request(app)
+      .get('/api/v1/auth/email-availability')
+      .query({ email: '  JOHN@EXAMPLE.COM  ' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ success: true, data: { available: true } });
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(User.exists).toHaveBeenCalledWith({
+      email: 'john@example.com',
+      isVerified: true,
+    });
+  });
+
+  it('returns unavailable when a verified user owns the email', async () => {
+    jest.spyOn(User, 'exists').mockResolvedValue({ _id: 'existing-id' });
+
+    const response = await request(app)
+      .get('/api/v1/auth/email-availability')
+      .query({ email: 'john@example.com' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ success: true, data: { available: false } });
+  });
+
+  it('validates the email query parameter', async () => {
+    const response = await request(app)
+      .get('/api/v1/auth/email-availability')
+      .query({ email: 'not-an-email' });
+
+    expect(response.status).toBe(400);
+  });
+});
+
 describe('POST /api/v1/auth/signup/request-otp', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('should return 200 and queue an email for valid input', async () => {
     jest.spyOn(User, 'findOne').mockResolvedValue(null);
     jest.spyOn(User, 'create').mockResolvedValue({ _id: '123', username: 'john_doe' });
-    jest.spyOn(Otp, 'findOneAndUpdate').mockResolvedValue({});
+    jest.spyOn(Otp, 'deleteMany').mockResolvedValue({});
+    jest.spyOn(Otp, 'create').mockResolvedValue({});
 
     const response = await request(app).post('/api/v1/auth/signup/request-otp').send({
       username: 'john_doe',

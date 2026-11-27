@@ -1,12 +1,62 @@
 paths:
+  /api/v1/auth/username-availability:
+    get:
+      summary: Check username availability
+      description: Returns whether a username can be used. Reserved names are rejected; usernames owned by verified accounts are unavailable. Pending signup usernames can be reused.
+      tags: [Auth]
+      parameters:
+        - in: query
+          name: username
+          required: true
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 30
+            pattern: '^[a-z0-9_.-]+$'
+          example: john_doe
+      responses:
+        '200':
+          $ref: '#/components/responses/UsernameAvailabilitySuccess'
+        '400':
+          $ref: '#/components/responses/UsernameAvailabilityBadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/auth/email-availability:
+    get:
+      summary: Check email availability
+      description: Returns whether an email address is available. Verified accounts make an email unavailable; emails on pending signups remain available for signup retry.
+      tags: [Auth]
+      parameters:
+        - in: query
+          name: email
+          required: true
+          schema:
+            type: string
+            format: email
+            minLength: 5
+            maxLength: 254
+          example: john@example.com
+      responses:
+        '200':
+          $ref: '#/components/responses/EmailAvailabilitySuccess'
+        '400':
+          $ref: '#/components/responses/EmailAvailabilityBadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /api/v1/auth/signup/request-otp:
     post:
       summary: Request an OTP for signup
       description: >-
         Creates an unverified user, generates a 6-digit OTP, and queues the email for delivery.
-        Pending accounts reserve their username until verified or removed by the 24-hour TTL index.
-        Retrying with the same email replaces that email's unverified account; the requested
-        username must not belong to another email.
+        Only verified accounts reserve an email or username. Pending signup records matching the
+        requested email or username are replaced; the 24-hour TTL index removes abandoned records.
+        The requested username must not belong to a verified account.
       tags: [Auth]
       requestBody:
         required: true

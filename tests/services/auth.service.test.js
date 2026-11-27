@@ -7,6 +7,7 @@ import { jest } from '@jest/globals';
 jest.unstable_mockModule('../../src/models/user.model.js', () => ({
   default: {
     findOne: jest.fn(),
+    exists: jest.fn(),
     findById: jest.fn(),
     create: jest.fn(),
     deleteOne: jest.fn(),
@@ -89,6 +90,8 @@ const {
 const { logger } = await import('../../src/config/logger.js');
 const {
   requestSignupOtp,
+  isUsernameAvailable,
+  isEmailAvailable,
   resendSignupOtp,
   verifySignupOtp,
   loginUser,
@@ -127,6 +130,39 @@ const buildFindChain = (sessions) => {
 describe('auth.service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('isUsernameAvailable', () => {
+    it('returns false when a verified user owns the username', async () => {
+      User.exists.mockResolvedValue({ _id: 'existing-id' });
+
+      await expect(isUsernameAvailable({ username: 'john' })).resolves.toBe(false);
+      expect(User.exists).toHaveBeenCalledWith({ username: 'john', isVerified: true });
+    });
+
+    it('returns true when no verified user owns the username', async () => {
+      User.exists.mockResolvedValue(null);
+
+      await expect(isUsernameAvailable({ username: 'john' })).resolves.toBe(true);
+    });
+  });
+
+  describe('isEmailAvailable', () => {
+    it('returns false when a verified user owns the email', async () => {
+      User.exists.mockResolvedValue({ _id: 'existing-id' });
+
+      await expect(isEmailAvailable({ email: 'john@example.com' })).resolves.toBe(false);
+      expect(User.exists).toHaveBeenCalledWith({
+        email: 'john@example.com',
+        isVerified: true,
+      });
+    });
+
+    it('returns true when no verified user owns the email', async () => {
+      User.exists.mockResolvedValue(null);
+
+      await expect(isEmailAvailable({ email: 'john@example.com' })).resolves.toBe(true);
+    });
   });
 
   describe('requestSignupOtp', () => {
@@ -183,7 +219,8 @@ describe('auth.service', () => {
           );
         User.deleteMany.mockResolvedValue({});
         User.create.mockResolvedValue({ _id: 'new-id' });
-        Otp.findOneAndUpdate.mockResolvedValue({});
+        Otp.deleteMany.mockResolvedValue({});
+        Otp.create.mockResolvedValue({});
         emailQueue.add.mockResolvedValue({});
 
         await requestSignupOtp(payload);
@@ -192,22 +229,14 @@ describe('auth.service', () => {
           _id: { $in: ['old-id', ...(existingUsername === payload.username ? ['old-id'] : [])] },
           isVerified: false,
         });
-        expect(User.create).toHaveBeenCalledWith(
-          expect.objectContaining({
-            ...payload,
-            expiresAt: expect.any(Date),
-          })
-        );
-        expect(Otp.findOneAndUpdate).toHaveBeenCalledWith(
-          { email: payload.email, purpose: 'signup' },
-          {
-            $set: {
-              codeHash: 'hashed-otp',
-              expiresAt: expect.any(Date),
-            },
-          },
-          { upsert: true }
-        );
+        expect(User.create).toHaveBeenCalledWith(expect.objectContaining(payload));
+        expect(Otp.deleteMany).toHaveBeenCalledWith({ email: payload.email, purpose: 'signup' });
+        expect(Otp.create).toHaveBeenCalledWith({
+          email: payload.email,
+          codeHash: 'hashed-otp',
+          expiresAt: expect.any(Date),
+          purpose: 'signup',
+        });
         expect(emailQueue.add).toHaveBeenCalledWith('send-otp', {
           email: 'john@example.com',
           username: 'john',
@@ -216,11 +245,33 @@ describe('auth.service', () => {
       }
     );
 
-    it('should reject a username already used by another account', async () => {
+    it('should replace a username owned by another pending account', async () => {
       User.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce({
+        _id: 'pending-id',
         email: 'other@example.com',
         username: payload.username,
         isVerified: false,
+      });
+      User.deleteMany.mockResolvedValue({});
+      User.create.mockResolvedValue({ _id: 'new-id' });
+      Otp.deleteMany.mockResolvedValue({});
+      Otp.create.mockResolvedValue({});
+      emailQueue.add.mockResolvedValue({});
+
+      await requestSignupOtp(payload);
+
+      expect(User.deleteMany).toHaveBeenCalledWith({
+        _id: { $in: ['pending-id'] },
+        isVerified: false,
+      });
+      expect(User.create).toHaveBeenCalledWith(expect.objectContaining(payload));
+    });
+
+    it('should reject a username already used by a verified account', async () => {
+      User.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce({
+        email: 'other@example.com',
+        username: payload.username,
+        isVerified: true,
       });
 
       await expect(requestSignupOtp(payload)).rejects.toThrow(

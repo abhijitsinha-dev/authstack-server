@@ -1,9 +1,9 @@
 import { jest } from '@jest/globals';
-import { validate } from '../../src/middlewares/validate.middleware.js';
+import { validateBody } from '../../src/middlewares/validate.middleware.js';
 import { requestOtpSchema } from '../../src/validators/auth.validator.js';
 import { ApiError } from '../../src/utils/ApiError.js';
 
-describe('validate middleware', () => {
+describe('validateBody middleware', () => {
   it('should attach valid data to req.body and call next()', () => {
     const req = {
       body: {
@@ -14,7 +14,7 @@ describe('validate middleware', () => {
     };
     const next = jest.fn();
 
-    validate(requestOtpSchema)(req, {}, next);
+    validateBody(requestOtpSchema)(req, {}, next);
 
     expect(next).toHaveBeenCalledWith(); // No error passed
     expect(req.body.username).toBe('john');
@@ -32,7 +32,7 @@ describe('validate middleware', () => {
     };
     const next = jest.fn();
 
-    validate(requestOtpSchema)(req, {}, next);
+    validateBody(requestOtpSchema)(req, {}, next);
 
     const errorArg = next.mock.calls[0][0];
     expect(errorArg).toBeInstanceOf(ApiError);

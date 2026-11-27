@@ -1,5 +1,31 @@
 components:
   schemas:
+    UsernameAvailabilitySuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            available:
+              type: boolean
+              example: true
+
+    EmailAvailabilitySuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            available:
+              type: boolean
+              example: true
+
     OtpSuccessResponse:
       type: object
       properties:

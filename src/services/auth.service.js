@@ -18,6 +18,14 @@ const MAX_OTP_ATTEMPTS = 5;
 // OTP validity window — must match the expiresAt set when creating the OTP
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
+export const isUsernameAvailable = async ({ username }) => {
+  return !(await User.exists({ username, isVerified: true }));
+};
+
+export const isEmailAvailable = async ({ email }) => {
+  return !(await User.exists({ email, isVerified: true }));
+};
+
 export const requestSignupOtp = async ({ username, email, password }) => {
   const [emailOwner, usernameOwner] = await Promise.all([
     User.findOne({ email }),
@@ -29,15 +37,15 @@ export const requestSignupOtp = async ({ username, email, password }) => {
     throw new ApiError(409, 'An account with this email already exists. Please log in.');
   }
 
-  // 2. Username owned by a different (pending or verified) account → take another
-  if (usernameOwner && (usernameOwner?.email !== email || usernameOwner?.isVerified)) {
+  // 2. A verified account owns the username → take another
+  if (usernameOwner?.isVerified) {
     throw new ApiError(
       409,
       'An account with this username already exists. Please choose another username.'
     );
   }
 
-  // 3. Clean up stale unverified records (case 1 & 3)
+  // 3. Replace any pending records that own the submitted email or username
   const staleIds = [emailOwner?._id, usernameOwner?._id].filter(Boolean);
   if (staleIds.length) {
     await User.deleteMany({ _id: { $in: staleIds }, isVerified: false });
@@ -49,7 +57,6 @@ export const requestSignupOtp = async ({ username, email, password }) => {
       username,
       email,
       password,
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // TTL
     });
   } catch (err) {
     if (err.code === 11000) {
@@ -60,16 +67,10 @@ export const requestSignupOtp = async ({ username, email, password }) => {
 
   // 5. OTP (upsert to avoid duplicates)
   const { otp, hashedOtp } = await generateHashedOtp();
-  await Otp.findOneAndUpdate(
-    { email, purpose: 'signup' },
-    {
-      $set: {
-        codeHash: hashedOtp,
-        expiresAt: new Date(Date.now() + OTP_TTL_MS),
-      },
-    },
-    { upsert: true }
-  );
+  const expiresAt = new Date(Date.now() + OTP_TTL_MS);
+
+  await Otp.deleteMany({ email, purpose: 'signup' });
+  await Otp.create({ email, codeHash: hashedOtp, expiresAt, purpose: 'signup' });
 
   await emailQueue.add('send-otp', { email, username, otp });
 };

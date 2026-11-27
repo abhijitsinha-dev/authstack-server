@@ -14,8 +14,22 @@ import {
   verifyEmailChange,
   requestPasswordReset,
   resetPassword,
+  isUsernameAvailable,
+  isEmailAvailable,
 } from '../services/auth.service.js';
 import { sendAuthResponse } from '../utils/authResponse.js';
+
+export const checkUsernameAvailability = async (req, res) => {
+  const available = await isUsernameAvailable({ username: req.validatedQuery.username });
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({ success: true, data: { available } });
+};
+
+export const checkEmailAvailability = async (req, res) => {
+  const available = await isEmailAvailable({ email: req.validatedQuery.email });
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(200).json({ success: true, data: { available } });
+};
 
 export const requestOtp = async (req, res) => {
   const { username, email, password } = req.body;

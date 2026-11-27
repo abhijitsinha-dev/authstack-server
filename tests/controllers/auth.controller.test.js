@@ -13,6 +13,8 @@ jest.unstable_mockModule('../../src/services/auth.service.js', () => ({
   revokeSession: jest.fn(),
   revokeOtherSessions: jest.fn(),
   changePassword: jest.fn(),
+  isUsernameAvailable: jest.fn(),
+  isEmailAvailable: jest.fn(),
   requestEmailChange: jest.fn(), // 👈 NEW
   verifyEmailChange: jest.fn(), // 👈 NEW
   requestPasswordReset: jest.fn(),
@@ -32,6 +34,8 @@ const {
   revokeSession,
   revokeOtherSessions,
   changePassword,
+  isUsernameAvailable,
+  isEmailAvailable,
   requestEmailChange, // 👈 NEW
   verifyEmailChange, // 👈 NEW
   requestPasswordReset,
@@ -40,6 +44,8 @@ const {
 
 const {
   requestOtp,
+  checkUsernameAvailability,
+  checkEmailAvailability,
   resendOtp,
   verifyOtp,
   login,
@@ -79,6 +85,34 @@ describe('auth.controller', () => {
       clearCookie: jest.fn(),
       setHeader: jest.fn(),
     };
+  });
+
+  describe('checkUsernameAvailability', () => {
+    it('returns the username availability result', async () => {
+      req.validatedQuery = { username: 'john' };
+      isUsernameAvailable.mockResolvedValue(true);
+
+      await checkUsernameAvailability(req, res);
+
+      expect(isUsernameAvailable).toHaveBeenCalledWith({ username: 'john' });
+      expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({ success: true, data: { available: true } });
+    });
+  });
+
+  describe('checkEmailAvailability', () => {
+    it('returns the email availability result', async () => {
+      req.validatedQuery = { email: 'john@example.com' };
+      isEmailAvailable.mockResolvedValue(false);
+
+      await checkEmailAvailability(req, res);
+
+      expect(isEmailAvailable).toHaveBeenCalledWith({ email: 'john@example.com' });
+      expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({ success: true, data: { available: false } });
+    });
   });
 
   describe('requestOtp', () => {
