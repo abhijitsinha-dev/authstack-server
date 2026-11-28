@@ -1,6 +1,6 @@
 paths:
-  /api/v1/auth/change-username:
-    post:
+  /api/v1/users/me/username:
+    patch:
       summary: Change the authenticated user's username
       description: |
         Changes the username for the currently authenticated user. A valid
@@ -12,7 +12,7 @@ paths:
         The username must not already belong to another account. The unique
         database index remains the final safeguard against concurrent changes.
         Other sessions remain active.
-      tags: [Auth]
+      tags: [Users]
       security:
         - bearerAuth: []
       requestBody:

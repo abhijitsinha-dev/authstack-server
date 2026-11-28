@@ -1,0 +1,42 @@
+paths:
+  /api/v1/auth/sessions/others:
+    delete:
+      summary: Revoke all other sessions
+      description: |
+        Revokes every session for the authenticated user **except** the one
+        making the request. Equivalent to "Log out of all other devices" —
+        the caller stays logged in on their current device.
+
+        Returns the number of sessions that were revoked. If the user has no
+        other active sessions, the operation succeeds with `revokedCount: 0`
+        (idempotent — callers don't need to check first).
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Other sessions revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Other sessions revoked.
+                  data:
+                    type: object
+                    properties:
+                      revokedCount:
+                        type: integer
+                        description: Number of sessions revoked (0 if none existed).
+                        example: 3
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'

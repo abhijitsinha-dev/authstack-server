@@ -1,6 +1,6 @@
 paths:
-  /api/v1/auth/change-email/request-otp:
-    post:
+  /api/v1/users/me/email:
+    patch:
       summary: Request OTP to change email
       description: |
         Step 1 of the email change flow. Verifies the user's current password
@@ -22,7 +22,7 @@ paths:
 
         **Note:** notification to the old email address is not yet
         implemented (industry-standard follow-up).
-      tags: [Auth]
+      tags: [Users]
       security:
         - bearerAuth: []
       requestBody:
@@ -94,8 +94,8 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
-  /api/v1/auth/change-email/verify-otp:
-    post:
+  /api/v1/users/me/email/verify-otp:
+    patch:
       summary: Verify OTP and complete email change
       description: |
         Step 2 of the email change flow. Verifies the OTP sent to the new
@@ -105,7 +105,7 @@ paths:
         factor on top of the session + password checked in step 1.
 
         **All OTHER sessions are revoked** on success (keeps the current one,
-        same as `POST /change-password`) so a compromised device that triggered
+        same as `PATCH /users/me/password`) so a compromised device that triggered
         the change is logged out.
 
         **Atomic OTP consumption:** the OTP is deleted with
@@ -116,7 +116,7 @@ paths:
         `newEmail` between request-otp and verify-otp, a `409` is returned.
         The unique index on `User.email` is the final safety net — this
         pre-check gives the user a clean error before the save attempt.
-      tags: [Auth]
+      tags: [Users]
       security:
         - bearerAuth: []
       requestBody:

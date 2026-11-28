@@ -134,7 +134,7 @@ describe('GET /api/v1/auth/email-availability', () => {
   });
 });
 
-describe('POST /api/v1/auth/change-username', () => {
+describe('PATCH /api/v1/users/me/username', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('changes the authenticated user username and returns the normalized value', async () => {
@@ -145,7 +145,7 @@ describe('POST /api/v1/auth/change-username', () => {
     jest.spyOn(User, 'findOne').mockResolvedValue(null);
 
     const response = await request(app)
-      .post('/api/v1/auth/change-username')
+      .patch('/api/v1/users/me/username')
       .set('Authorization', 'Bearer valid-token')
       .send({ newUsername: '  NEW_Name  ' });
 
@@ -164,7 +164,7 @@ describe('POST /api/v1/auth/change-username', () => {
     jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
 
     const response = await request(app)
-      .post('/api/v1/auth/change-username')
+      .patch('/api/v1/users/me/username')
       .set('Authorization', 'Bearer valid-token')
       .send({ newUsername: 'admin' });
 
@@ -183,7 +183,7 @@ describe('POST /api/v1/auth/change-username', () => {
     jest.spyOn(User, 'findOne').mockResolvedValue({ _id: 'other-user' });
 
     const response = await request(app)
-      .post('/api/v1/auth/change-username')
+      .patch('/api/v1/users/me/username')
       .set('Authorization', 'Bearer valid-token')
       .send({ newUsername: 'taken_name' });
 
@@ -193,10 +193,68 @@ describe('POST /api/v1/auth/change-username', () => {
 
   it('requires an authenticated session', async () => {
     const response = await request(app)
-      .post('/api/v1/auth/change-username')
+      .patch('/api/v1/users/me/username')
       .send({ newUsername: 'new_name' });
 
     expect(response.status).toBe(401);
+  });
+});
+
+describe('PATCH /api/v1/users/me', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('updates the authenticated user profile with validated fields', async () => {
+    const mockUser = { name: 'Old Name', role: 'user', save: jest.fn().mockResolvedValue({}) };
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
+    jest.spyOn(User, 'findById').mockResolvedValue(mockUser);
+
+    const response = await request(app)
+      .patch('/api/v1/users/me')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ name: '  New Name  ', role: 'admin' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      success: true,
+      message: 'Profile updated successfully.',
+      data: { name: 'New Name' },
+    });
+    expect(mockUser.name).toBe('New Name');
+    expect(mockUser.role).toBe('user');
+    expect(mockUser.save).toHaveBeenCalled();
+  });
+
+  it('rejects empty or unsupported profile updates', async () => {
+    jest.spyOn(jwt, 'verify').mockReturnValue({ sid: 's1', sub: 'u1' });
+    jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
+
+    const emptyResponse = await request(app)
+      .patch('/api/v1/users/me')
+      .set('Authorization', 'Bearer valid-token')
+      .send({});
+    const unsupportedResponse = await request(app)
+      .patch('/api/v1/users/me')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ role: 'admin' });
+
+    expect(emptyResponse.status).toBe(400);
+    expect(unsupportedResponse.status).toBe(400);
+    expect(User.findById).not.toHaveBeenCalled();
+  });
+
+  it('requires an authenticated session', async () => {
+    const response = await request(app).patch('/api/v1/users/me').send({ name: 'New Name' });
+
+    expect(response.status).toBe(401);
+  });
+
+  it('does not expose profile updates under auth routes', async () => {
+    const response = await request(app)
+      .post('/api/v1/auth/change-username')
+      .send({ newUsername: 'new_name' });
+
+    expect(response.status).toBe(404);
   });
 });
 
@@ -494,7 +552,7 @@ describe('POST /api/v1/auth/refresh', () => {
   });
 });
 
-describe('GET /api/v1/auth/me', () => {
+describe('GET /api/v1/users/me', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('should return the current user with no-store', async () => {
@@ -509,7 +567,7 @@ describe('GET /api/v1/auth/me', () => {
     });
 
     const response = await request(app)
-      .get('/api/v1/auth/me')
+      .get('/api/v1/users/me')
       .set('Authorization', 'Bearer valid-token');
 
     expect(response.status).toBe(200);
@@ -524,7 +582,7 @@ describe('GET /api/v1/auth/me', () => {
   });
 
   it('should return 401 without a token', async () => {
-    const response = await request(app).get('/api/v1/auth/me');
+    const response = await request(app).get('/api/v1/users/me');
     expect(response.status).toBe(401);
   });
 
@@ -533,7 +591,7 @@ describe('GET /api/v1/auth/me', () => {
     jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: true });
 
     const response = await request(app)
-      .get('/api/v1/auth/me')
+      .get('/api/v1/users/me')
       .set('Authorization', 'Bearer valid-token');
 
     expect(response.status).toBe(401);
@@ -545,7 +603,7 @@ describe('GET /api/v1/auth/me', () => {
     jest.spyOn(User, 'findById').mockResolvedValue(null);
 
     const response = await request(app)
-      .get('/api/v1/auth/me')
+      .get('/api/v1/users/me')
       .set('Authorization', 'Bearer valid-token');
 
     expect(response.status).toBe(401);
@@ -634,7 +692,7 @@ describe('DELETE /api/v1/auth/sessions/:id', () => {
   });
 });
 
-describe('DELETE /api/v1/auth/sessions', () => {
+describe('DELETE /api/v1/auth/sessions/others', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('should return 200 with revokedCount', async () => {
@@ -643,7 +701,7 @@ describe('DELETE /api/v1/auth/sessions', () => {
     jest.spyOn(Session, 'updateMany').mockResolvedValue({ modifiedCount: 2 });
 
     const response = await request(app)
-      .delete('/api/v1/auth/sessions')
+      .delete('/api/v1/auth/sessions/others')
       .set('Authorization', 'Bearer valid-token');
 
     expect(response.status).toBe(200);
@@ -656,14 +714,14 @@ describe('DELETE /api/v1/auth/sessions', () => {
     jest.spyOn(Session, 'updateMany').mockResolvedValue({ modifiedCount: 0 });
 
     const response = await request(app)
-      .delete('/api/v1/auth/sessions')
+      .delete('/api/v1/auth/sessions/others')
       .set('Authorization', 'Bearer valid-token');
 
     expect(response.body.data.revokedCount).toBe(0);
   });
 
   it('should return 401 without token', async () => {
-    const response = await request(app).delete('/api/v1/auth/sessions');
+    const response = await request(app).delete('/api/v1/auth/sessions/others');
     expect(response.status).toBe(401);
   });
 });
@@ -690,7 +748,7 @@ describe('POST /api/v1/auth/logout', () => {
   });
 });
 
-describe('POST /api/v1/auth/change-password', () => {
+describe('PATCH /api/v1/users/me/password', () => {
   let mockUser;
   let selectMock;
 
@@ -708,7 +766,7 @@ describe('POST /api/v1/auth/change-password', () => {
     jest.spyOn(Session, 'updateMany').mockResolvedValue({ modifiedCount: 2 });
 
     const response = await request(app)
-      .post('/api/v1/auth/change-password')
+      .patch('/api/v1/users/me/password')
       .set('Authorization', 'Bearer valid-token')
       .send({
         currentPassword: 'OldPassword123!',
@@ -728,7 +786,7 @@ describe('POST /api/v1/auth/change-password', () => {
     jest.spyOn(Session, 'updateMany').mockResolvedValue({ modifiedCount: 0 });
 
     const response = await request(app)
-      .post('/api/v1/auth/change-password')
+      .patch('/api/v1/users/me/password')
       .set('Authorization', 'Bearer valid-token')
       .send({
         currentPassword: 'OldPassword123!',
@@ -746,7 +804,7 @@ describe('POST /api/v1/auth/change-password', () => {
     jest.spyOn(bcrypt, 'compare').mockResolvedValue(false);
 
     const response = await request(app)
-      .post('/api/v1/auth/change-password')
+      .patch('/api/v1/users/me/password')
       .set('Authorization', 'Bearer valid-token')
       .send({
         currentPassword: 'WrongPassword123!',
@@ -763,7 +821,7 @@ describe('POST /api/v1/auth/change-password', () => {
     jest.spyOn(bcrypt, 'compare').mockResolvedValue(true);
 
     const response = await request(app)
-      .post('/api/v1/auth/change-password')
+      .patch('/api/v1/users/me/password')
       .set('Authorization', 'Bearer valid-token')
       .send({
         currentPassword: 'OldPassword123!',
@@ -779,7 +837,7 @@ describe('POST /api/v1/auth/change-password', () => {
     jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
 
     const response = await request(app)
-      .post('/api/v1/auth/change-password')
+      .patch('/api/v1/users/me/password')
       .set('Authorization', 'Bearer valid-token')
       .send({
         currentPassword: 'OldPassword123!',
@@ -796,7 +854,7 @@ describe('POST /api/v1/auth/change-password', () => {
     jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
 
     const response = await request(app)
-      .post('/api/v1/auth/change-password')
+      .patch('/api/v1/users/me/password')
       .set('Authorization', 'Bearer valid-token')
       .send({
         currentPassword: 'OldPassword123!',
@@ -808,7 +866,7 @@ describe('POST /api/v1/auth/change-password', () => {
   });
 
   it('should return 401 without token', async () => {
-    const response = await request(app).post('/api/v1/auth/change-password').send({
+    const response = await request(app).patch('/api/v1/users/me/password').send({
       currentPassword: 'OldPassword123!',
       newPassword: 'NewPassword456!',
       confirmPassword: 'NewPassword456!',
@@ -818,9 +876,9 @@ describe('POST /api/v1/auth/change-password', () => {
 });
 
 // ─────────────────────────────────────────────
-// NEW: POST /change-email/request-otp
+// Email change request
 // ─────────────────────────────────────────────
-describe('POST /api/v1/auth/change-email/request-otp', () => {
+describe('PATCH /api/v1/users/me/email', () => {
   let mockUser;
   let selectMock;
 
@@ -847,7 +905,7 @@ describe('POST /api/v1/auth/change-email/request-otp', () => {
     jest.spyOn(Otp, 'create').mockResolvedValue({});
 
     const response = await request(app)
-      .post('/api/v1/auth/change-email/request-otp')
+      .patch('/api/v1/users/me/email')
       .set('Authorization', 'Bearer valid-token')
       .send({ newEmail: 'new@example.com', currentPassword: 'OldPassword123!' });
 
@@ -866,7 +924,7 @@ describe('POST /api/v1/auth/change-email/request-otp', () => {
     jest.spyOn(bcrypt, 'compare').mockResolvedValue(false);
 
     const response = await request(app)
-      .post('/api/v1/auth/change-email/request-otp')
+      .patch('/api/v1/users/me/email')
       .set('Authorization', 'Bearer valid-token')
       .send({ newEmail: 'new@example.com', currentPassword: 'WrongPassword123!' });
 
@@ -880,7 +938,7 @@ describe('POST /api/v1/auth/change-email/request-otp', () => {
     jest.spyOn(bcrypt, 'compare').mockResolvedValue(true);
 
     const response = await request(app)
-      .post('/api/v1/auth/change-email/request-otp')
+      .patch('/api/v1/users/me/email')
       .set('Authorization', 'Bearer valid-token')
       .send({ newEmail: 'old@example.com', currentPassword: 'OldPassword123!' });
 
@@ -895,7 +953,7 @@ describe('POST /api/v1/auth/change-email/request-otp', () => {
     jest.spyOn(User, 'findOne').mockResolvedValue({ _id: 'other', email: 'new@example.com' });
 
     const response = await request(app)
-      .post('/api/v1/auth/change-email/request-otp')
+      .patch('/api/v1/users/me/email')
       .set('Authorization', 'Bearer valid-token')
       .send({ newEmail: 'new@example.com', currentPassword: 'OldPassword123!' });
 
@@ -908,7 +966,7 @@ describe('POST /api/v1/auth/change-email/request-otp', () => {
     jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
 
     const response = await request(app)
-      .post('/api/v1/auth/change-email/request-otp')
+      .patch('/api/v1/users/me/email')
       .set('Authorization', 'Bearer valid-token')
       .send({ newEmail: 'not-an-email', currentPassword: 'OldPassword123!' });
 
@@ -918,16 +976,16 @@ describe('POST /api/v1/auth/change-email/request-otp', () => {
 
   it('should return 401 without token', async () => {
     const response = await request(app)
-      .post('/api/v1/auth/change-email/request-otp')
+      .patch('/api/v1/users/me/email')
       .send({ newEmail: 'new@example.com', currentPassword: 'OldPassword123!' });
     expect(response.status).toBe(401);
   });
 });
 
 // ─────────────────────────────────────────────
-// NEW: POST /change-email/verify-otp
+// Email change verification
 // ─────────────────────────────────────────────
-describe('POST /api/v1/auth/change-email/verify-otp', () => {
+describe('PATCH /api/v1/users/me/email/verify-otp', () => {
   let mockUser;
 
   beforeEach(() => {
@@ -951,7 +1009,7 @@ describe('POST /api/v1/auth/change-email/verify-otp', () => {
     jest.spyOn(Session, 'updateMany').mockResolvedValue({ modifiedCount: 2 });
 
     const response = await request(app)
-      .post('/api/v1/auth/change-email/verify-otp')
+      .patch('/api/v1/users/me/email/verify-otp')
       .set('Authorization', 'Bearer valid-token')
       .send({ newEmail: 'new@example.com', otp: '123456' });
 
@@ -977,7 +1035,7 @@ describe('POST /api/v1/auth/change-email/verify-otp', () => {
     jest.spyOn(Session, 'updateMany').mockResolvedValue({ modifiedCount: 0 });
 
     const response = await request(app)
-      .post('/api/v1/auth/change-email/verify-otp')
+      .patch('/api/v1/users/me/email/verify-otp')
       .set('Authorization', 'Bearer valid-token')
       .send({ newEmail: 'new@example.com', otp: '123456' });
 
@@ -998,7 +1056,7 @@ describe('POST /api/v1/auth/change-email/verify-otp', () => {
     jest.spyOn(bcrypt, 'compare').mockResolvedValue(false);
 
     const response = await request(app)
-      .post('/api/v1/auth/change-email/verify-otp')
+      .patch('/api/v1/users/me/email/verify-otp')
       .set('Authorization', 'Bearer valid-token')
       .send({ newEmail: 'new@example.com', otp: '000000' });
 
@@ -1011,7 +1069,7 @@ describe('POST /api/v1/auth/change-email/verify-otp', () => {
     jest.spyOn(Session, 'findById').mockResolvedValue({ isRevoked: false });
 
     const response = await request(app)
-      .post('/api/v1/auth/change-email/verify-otp')
+      .patch('/api/v1/users/me/email/verify-otp')
       .set('Authorization', 'Bearer valid-token')
       .send({ newEmail: 'new@example.com', otp: '123' });
 
@@ -1021,7 +1079,7 @@ describe('POST /api/v1/auth/change-email/verify-otp', () => {
 
   it('should return 401 without token', async () => {
     const response = await request(app)
-      .post('/api/v1/auth/change-email/verify-otp')
+      .patch('/api/v1/users/me/email/verify-otp')
       .send({ newEmail: 'new@example.com', otp: '123456' });
     expect(response.status).toBe(401);
   });

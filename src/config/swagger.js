@@ -16,6 +16,7 @@ const options = {
     tags: [
       { name: 'System', description: 'Health and readiness probes' },
       { name: 'Auth', description: 'Authentication endpoints' },
+      { name: 'Users', description: 'Authenticated user profiles and account data' },
     ],
     components: {
       securitySchemes: {

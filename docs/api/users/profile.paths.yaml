@@ -1,0 +1,90 @@
+paths:
+  /api/v1/users/me:
+    get:
+      summary: Get the current authenticated user
+      description: |
+        Returns the profile of the user associated with the supplied access
+        token. Used by clients on cold start (page reload, app restart) to
+        hydrate UI state without a full login round-trip.
+
+        The response shape is identical to the `user` field returned by
+        `/auth/login` and `/auth/signup/verify-otp`, so clients can share the
+        same parser.
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/MeSuccess'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    patch:
+      summary: Update the authenticated user's profile
+      description: |
+        Updates profile fields for the currently authenticated user. A valid
+        access token and active session are required. The request currently
+        supports `name`; unsupported fields are ignored when supported fields
+        are present and a request with no supported fields is rejected.
+      tags: [Users]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                name:
+                  type: string
+                  maxLength: 100
+                  description: Display name. Leading and trailing whitespace is trimmed.
+                  example: Jane Doe
+      responses:
+        '200':
+          description: Profile updated successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Profile updated successfully.
+                  data:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        example: Jane Doe
+        '400':
+          description: Empty update or invalid profile field
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                empty_update:
+                  summary: No supported profile field provided
+                  value:
+                    success: false
+                    message: At least one profile field must be provided.
+                invalid_name:
+                  summary: Name is empty or too long
+                  value:
+                    success: false
+                    message: Name cannot be empty.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalServerError'

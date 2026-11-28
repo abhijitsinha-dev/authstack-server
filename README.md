@@ -185,13 +185,6 @@ All business logic routes are versioned under `/api/v1`. Rate limits shown below
 - **Rate Limit:** 30 req/min (higher than other endpoints — called automatically on cold start and every 15-min access-token expiry).
 - **Errors:** `401` (no token, invalid/expired, session revoked, **reuse detected**), `429`, `500`.
 
-**`GET /me`**
-
-- **Requires:** Bearer Token
-- **Description:** Returns the authenticated user's profile. Used on cold start to hydrate client UI state without a full login round-trip. Response is `Cache-Control: no-store`.
-- **Rate Limit:** 60 req/min.
-- **Errors:** `401` (unauthorized, session revoked, or user deleted), `429`, `500`.
-
 **`GET /sessions`**
 
 - **Requires:** Bearer Token
@@ -206,7 +199,7 @@ All business logic routes are versioned under `/api/v1`. Rate limits shown below
 - **Rate Limit:** 10 req/min.
 - **Errors:** `400` (current session), `401` (unauthorized), `404` (not found), `429` (rate limit), `500`.
 
-**`DELETE /sessions`**
+**`DELETE /sessions/others`**
 
 - **Requires:** Bearer Token
 - **Description:** Revokes all sessions **except the current one** — "log out everywhere else". Returns `revokedCount` so the UI can confirm ("3 sessions revoked"). Idempotent — returns `revokedCount: 0` if no other sessions exist.
@@ -220,9 +213,24 @@ All business logic routes are versioned under `/api/v1`. Rate limits shown below
 - **Rate Limit:** 20 req/min.
 - **Errors:** `401` (unauthorized), `404` (session already gone), `500`.
 
-#### Username Change
+### User Routes (`/api/v1/users`)
 
-**`POST /change-username`**
+**`GET /me`**
+
+- **Requires:** Bearer Token
+- **Description:** Returns the authenticated user's profile. Used on cold start to hydrate client UI state without a full login round-trip. Response is `Cache-Control: no-store`.
+- **Rate Limit:** 60 req/min.
+- **Errors:** `401` (unauthorized, session revoked, or user deleted), `429`, `500`.
+
+**`PATCH /me`**
+
+- **Requires:** Bearer Token
+- **Body:** `{ name }` (currently the only supported profile field)
+- **Description:** Updates the authenticated user's profile. The name is trimmed and limited to 100 characters. Unsupported fields are ignored; requests with no supported fields are rejected. Add new fields to the profile validation schema when extending this endpoint.
+- **Rate Limit:** 10 req/15 min.
+- **Errors:** `400` (invalid or missing profile fields), `401` (unauthorized or invalid session), `429` (rate limit), `500`.
+
+**`PATCH /me/username`**
 
 - **Requires:** Bearer Token
 - **Body:** `{ newUsername }`
@@ -230,9 +238,7 @@ All business logic routes are versioned under `/api/v1`. Rate limits shown below
 - **Rate Limit:** 5 req/15 min.
 - **Errors:** `400` (invalid, reserved, or unchanged username), `401` (unauthorized or invalid session), `409` (username already in use), `429` (rate limit), `500`.
 
-#### Email Change
-
-**`POST /change-email/request-otp`**
+**`PATCH /me/email`**
 
 - **Requires:** Bearer Token
 - **Body:** `{ newEmail, currentPassword }`
@@ -241,7 +247,7 @@ All business logic routes are versioned under `/api/v1`. Rate limits shown below
 - **Errors:** `400` (invalid email, same as current, missing password), `401` (unauthorized or wrong password), `409` (email already taken), `429` (cooldown or rate limit), `500`.
 - **Limitation:** notification to the old email address is not yet implemented — an industry-standard follow-up.
 
-**`POST /change-email/verify-otp`**
+**`PATCH /me/email/verify-otp`**
 
 - **Requires:** Bearer Token
 - **Body:** `{ newEmail, otp }`
@@ -249,15 +255,15 @@ All business logic routes are versioned under `/api/v1`. Rate limits shown below
 - **Rate Limit:** 5 req/15 min.
 - **Errors:** `400` (invalid/expired/used OTP, same email), `401` (unauthorized), `409` (email claimed during OTP window), `429` (lockout or rate limit), `500`.
 
-#### Password
-
-**`POST /change-password`**
+**`PATCH /me/password`**
 
 - **Requires:** Bearer Token
 - **Body:** `{ currentPassword, newPassword, confirmPassword }`
 - **Description:** Changes the password for the authenticated user. Requires the current password as proof of identity — not just a valid session — so a stolen access token can't take over the account. **All other sessions are revoked** on success; the current session stays active.
 - **Rate Limit:** 5 req/15 min.
 - **Errors:** `400` (weak new password, mismatch, same as current), `401` (unauthorized or wrong current password), `429` (rate limit), `500`.
+
+### Auth Password Recovery (`/api/v1/auth`)
 
 **`POST /forgot-password`**
 
@@ -285,7 +291,7 @@ Instead, we use a **modular YAML approach**:
 
 - Base configuration (info, servers, security) lives in `src/config/swagger.js`
 - All paths, schemas, and responses live in the `docs/api/` folder
-- Files are grouped by domain (e.g., `docs/api/auth/`, `docs/api/system/`)
+- Files are grouped by domain (e.g., `docs/api/auth/`, `docs/api/users/`, `docs/api/system/`)
 - Shared components live in `docs/api/components/` (`global.responses.yaml`, `global.schemas.yaml`)
 
 To add a new endpoint:
@@ -321,6 +327,7 @@ server/
 │   ├── api/                      # Modular OpenAPI 3.1 YAML specs
 │   │   ├── components/           # Reusable schemas & responses
 │   │   ├── auth/                 # Auth paths, schemas, responses
+│   │   ├── users/                # User profile and account-data paths
 │   │   └── system/               # Health & root paths
 │   ├── decisions/                # Architecture Decision Records (ADRs)
 │   ├── README.md                 # Docs hub
@@ -335,7 +342,7 @@ server/
 │   │   └── session.model.js      # isRevoked + revokedAt + lastUsedAt
 │   ├── queues/                   # BullMQ queue definitions
 │   ├── routes/                   # Express routers (code-only, no JSDoc)
-│   ├── services/                 # Business logic (Auth, Email)
+│   ├── services/                 # Business logic (Auth, Users, Email)
 │   ├── utils/                    # Helpers (ApiError, JWT, OTP, Validators)
 │   ├── validators/               # Joi validation schemas
 │   ├── app.js                    # Express app configuration

@@ -67,6 +67,17 @@ export const changeUsernameSchema = Joi.object({
     }),
 });
 
+export const updateProfileSchema = Joi.object({
+  name: Joi.string().trim().max(100).messages({
+    'string.empty': 'Name cannot be empty.',
+    'string.max': 'Name must be at most 100 characters long.',
+  }),
+})
+  .min(1)
+  .messages({
+    'object.min': 'At least one profile field must be provided.',
+  });
+
 export const resendOtpSchema = Joi.object({
   email: emailField,
 });

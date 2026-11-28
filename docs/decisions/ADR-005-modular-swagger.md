@@ -14,7 +14,7 @@ As the application grew, `auth.route.js` became 99% documentation and 1% actual 
 
 We will move the OpenAPI specification entirely out of the JavaScript route files and into dedicated **YAML files**.
 
-We adopted a domain-driven folder structure (`docs/api/auth/`, `docs/api/system/`) and separated the schema definitions from the route paths. `swagger-jsdoc` is now configured to recursively read and merge all YAML files in the `docs/api/` directory at startup.
+We adopted a domain-driven folder structure (`docs/api/auth/`, `docs/api/users/`, `docs/api/system/`) and separated the schema definitions from the route paths. `swagger-jsdoc` is now configured to recursively read and merge all YAML files in the `docs/api/` directory at startup.
 
 ## Consequences
 

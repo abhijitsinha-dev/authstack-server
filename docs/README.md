@@ -18,14 +18,16 @@ We use ADRs to document significant technical decisions, their context, and thei
 - **[ADR-002: Async vs. Sync OTP Delivery](./decisions/ADR-002-sync-vs-async-otp.md)**
 - **[ADR-003: Defense-in-Depth Rate Limiting](./decisions/ADR-003-defense-in-depth-rate-limiting.md)**
 - **[ADR-004: JWT Token Strategy & Session Management](./decisions/ADR-004-token-strategy.md)**
-- **[ADR-005: Modular YAML API Documentation](./decisions/ADR-005-modular-swagger.md)** _(New)_
+- **[ADR-005: Modular YAML API Documentation](./decisions/ADR-005-modular-swagger.md)**
+- **[ADR-006: Auth and User Route Boundaries](./decisions/ADR-006-user-route-boundaries.md)**
 
 ### API Specifications
 
-We use a domain-driven OpenAPI 3.0 YAML structure to document our API.
+We use a domain-driven OpenAPI 3.1 YAML structure to document our API.
 
 - **[API Directory](./api/)** — The root folder for all OpenAPI YAML files.
 - **[Auth API](./api/auth/)** — Authentication paths and responses grouped by feature, with shared schemas.
+- **[Users API](./api/users/)** — User profile and account-data paths.
 - **[System Routes](./api/system/system.paths.yaml)** — Health and root probes.
 
 ### Development Standards
